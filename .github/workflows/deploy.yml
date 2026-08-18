@@ -1,0 +1,47 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [prod]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - run: uv sync --frozen
+      - run: uv run python -m compileall -q src
+      - run: docker compose config --quiet
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /opt/wotshop
+            git fetch origin prod
+            git checkout prod
+            git reset --hard origin/prod
+            docker compose up -d --build
+            docker image prune -f
