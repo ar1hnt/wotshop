@@ -162,7 +162,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "reviews_title": "ℹ️ <b>Отзывы</b>",
         "reviews_totals": "👍: {positive_count} | 👎: {negative_count}",
         "reviews_page_meta": "📄 Страница: <b>{page}</b> из <b>{total_pages}</b>",
-        "reviews_empty": "Отзывов пока нет.",
+        "reviews_empty": "Отзывов пока нет. Будьте в числе первых!",
         "review_button_leave": "📝 Оставить отзыв",
         "review_button_rules": "📌 Условия и правила отзывов",
         "review_create_choose_rating": "✍️ <b>Новый отзыв</b>\n\nВыберите тип отзыва:",
