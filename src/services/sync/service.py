@@ -555,6 +555,70 @@ class CatalogSyncService:
         )
         return result
 
+    async def refresh_account_supplier_price(
+        self,
+        *,
+        local_account_id: int,
+        supplier_price: Decimal,
+    ) -> CatalogRefreshResult:
+        """Apply the authoritative supplier price returned by confirm-buy.
+
+        The item endpoint can lag behind the confirm-buy response.  In that
+        case the latter is the only reliable source of the current price.
+        """
+        async with async_session_factory() as session:
+            repository = CatalogAccountRepository(session)
+            account = await repository.get_by_id_for_update(local_account_id)
+            if account is None:
+                await session.rollback()
+                raise LztSyncError(f"Local account {local_account_id} not found during price refresh.")
+
+            old_supplier_price = _to_decimal(account.supplier_price)
+            old_sale_price = _to_decimal(account.sale_price)
+            # Keep the shop markup while moving the public price together with
+            # the supplier price.  Catalog prices are always whole rubles.
+            price_delta = supplier_price - old_supplier_price
+            new_sale_price = (old_sale_price + price_delta).quantize(Decimal("1"), rounding=ROUND_CEILING)
+            if new_sale_price * LZT_PAYOUT_RATIO - supplier_price < LZT_MIN_NET_MARGIN_RUB:
+                await repository.delete(account)
+                await session.commit()
+                return CatalogRefreshResult(
+                    exists=False,
+                    changed=False,
+                    deleted=True,
+                    account_id=account.supplier_item_id,
+                    local_account_id=local_account_id,
+                    change_lines=(),
+                    deletion_reason="invalid_credentials",
+                )
+
+            account.supplier_price = supplier_price
+            account.sale_price = new_sale_price
+            await session.flush()
+            await session.commit()
+
+        logger.info(
+            "Catalog account supplier price refreshed from confirm-buy local_account_id=%s "
+            "supplier_price=%s sale_price=%s->%s",
+            local_account_id,
+            supplier_price,
+            old_sale_price,
+            new_sale_price,
+        )
+
+        return CatalogRefreshResult(
+            exists=True,
+            changed=old_sale_price != new_sale_price,
+            deleted=False,
+            account_id=account.supplier_item_id,
+            local_account_id=local_account_id,
+            change_lines=(
+                f"Изменилось поле «Цена продажи» ({_format_decimal(old_sale_price)} -> {_format_decimal(new_sale_price)})",
+            )
+            if old_sale_price != new_sale_price
+            else (),
+        )
+
     async def _run_background_sync(
         self,
         *,
