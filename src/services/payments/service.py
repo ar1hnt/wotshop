@@ -256,6 +256,7 @@ class PaymentService:
                 if isinstance(error, AccountPriceChangedError):
                     raise
                 raise AccountPurchaseFulfillmentError("Unable to complete purchase.") from error
+            await self._transaction_service.notify_admins_about_completed_transaction(bot, transaction.id)
             return PurchaseResult(
                 completed=True,
                 transaction_id=transaction.id,
