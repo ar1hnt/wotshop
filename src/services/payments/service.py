@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import logging
+import re
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -242,6 +243,12 @@ class PaymentService:
             except Exception as error:
                 logger.exception("Balance purchase fulfillment failed transaction_id=%s", transaction.id)
                 await self._rollback_balance_purchase(transaction.id, str(error))
+                await self._transaction_service.notify_admins_about_failed_transaction(bot, transaction.id)
+                await self._transaction_service.notify_admins_about_purchase_fulfillment_error(
+                    bot,
+                    transaction_id=transaction.id,
+                    error=error,
+                )
                 if isinstance(error, AccountPriceChangedError):
                     raise
                 raise AccountUnavailableError("Unable to complete purchase.") from error
@@ -542,8 +549,12 @@ class PaymentService:
             )
         except (LztApiResponseError, LztConfigurationError, LztSyncError) as error:
             if isinstance(error, LztApiResponseError) and _is_supplier_price_changed_error(error):
-                refresh_result = await catalog_sync_service.refresh_account(
-                    local_account_id=transaction.catalog_account_id or 0
+                new_supplier_price = _extract_supplier_price_from_error(error)
+                if new_supplier_price is None:
+                    raise AccountUnavailableError("Unable to read updated supplier price.") from error
+                refresh_result = await catalog_sync_service.refresh_account_supplier_price(
+                    local_account_id=transaction.catalog_account_id or 0,
+                    supplier_price=new_supplier_price,
                 )
                 # If the recalculated selling price no longer covers the new
                 # supplier price, refresh removes the item. Keep the actual
@@ -813,6 +824,23 @@ def _is_supplier_price_changed_error(error: LztApiResponseError) -> bool:
         isinstance(item, str) and "цена на аккаунт изменилась" in item.lower()
         for item in raw_errors
     )
+
+
+def _extract_supplier_price_from_error(error: LztApiResponseError) -> Decimal | None:
+    raw_errors = error.payload.get("errors")
+    if not isinstance(raw_errors, list):
+        return None
+    for item in raw_errors:
+        if not isinstance(item, str):
+            continue
+        match = re.search(r"сейчас\s+аккаунт\s+стоит\s+([\d.,]+)", item, flags=re.IGNORECASE)
+        if match is None:
+            continue
+        try:
+            return _to_money(Decimal(match.group(1).replace(",", ".")))
+        except InvalidOperation:
+            continue
+    return None
 
 
 def _account_snapshot(account: CatalogAccount) -> dict[str, object]:
