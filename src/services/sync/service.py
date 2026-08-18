@@ -217,8 +217,13 @@ class LztMarketClient:
         )
 
     async def confirm_buy(self, supplier_item_id: int, *, price: Decimal) -> dict[str, Any]:
-        payload: dict[str, int] = {
-            "price": int(price),
+        normalized_price = _to_decimal(price)
+        payload: dict[str, int | float] = {
+            "price": (
+                int(normalized_price)
+                if normalized_price == normalized_price.to_integral_value()
+                else float(normalized_price)
+            ),
             "balance_id": settings.lzt_balance_id,
         }
         return await self._request_json(
