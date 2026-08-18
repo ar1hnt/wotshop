@@ -13,8 +13,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
 
-RUN uv sync --frozen --no-dev
-
 RUN mkdir -p /app/logs
 
 CMD ["python", "engine.py"]
