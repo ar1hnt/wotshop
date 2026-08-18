@@ -8,4 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment and local runtime files
 .env
+.idea/
+logs/
+
+# Local development seed script
+test.py
+
+# Local API examples and integration notes
+example_lolz_search.py
+example_response_check_acc.txt
+example_response_get_account.txt
+example_wot_accounts_data_processing.py
+Инструкция по интеграции API и тестовому платежу.txt
