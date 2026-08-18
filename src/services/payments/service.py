@@ -37,7 +37,7 @@ from src.services.media.media_cache import resolve_photo_input
 logger = logging.getLogger(__name__)
 
 PLATEGA_API_URL = "https://app.platega.io/v2/transaction/process"
-PLATEGA_TIMEOUT_SECONDS = 30
+PLATEGA_TIMEOUT_SECONDS = 60
 
 
 class PaymentError(Exception):
@@ -234,6 +234,10 @@ class PaymentService:
             raise AccountValidationError("Unable to validate account.") from error
         if refreshed.deleted:
             raise AccountValidationError("Account is no longer available.")
+        # LZT explicitly requires the customer to review changed account data.
+        # Do not reserve funds or create a Platega invoice for stale details.
+        if refreshed.changed:
+            raise AccountPriceChangedError(refreshed)
 
         language, transaction, use_balance = await self._reserve_purchase(
             telegram_user,

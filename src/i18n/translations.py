@@ -423,7 +423,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "catalog_refresh_stopped": "❌ <b>Не удалось обновить информацию об аккаунте #{account_id}</b>\n\nОбновление информации об аккаунте остановлено.",
         "catalog_refresh_deleted": "❌ Аккаунт больше недоступен и был удален из каталога.",
         "catalog_refresh_deleted_with_reason": "❌ <b>Не удалось обновить информацию об аккаунте #{account_id}.</b>\n\n{reason}",
-        "catalog_refresh_deleted_reason_invalid_credentials": "Неправильный логин или пароль от аккаунта.",
+        "catalog_refresh_deleted_reason_invalid_credentials": "Неверный логин или пароль от аккаунта.",
         "catalog_refresh_not_changed": "✅ <b>Информация об аккаунте #{account_id} актуальна.</b>\n\nИзменений не найдено.",
         "catalog_refresh_changed": "⚠️ <b>Информация об аккаунте #{account_id} изменилась:</b>",
         "catalog_refresh_failed": "❌ <b>Не удалось обновить информацию об аккаунте #{account_id}.</b>\n\nПовторите попытку позже или обратитесь в техническую поддержку бота.",
