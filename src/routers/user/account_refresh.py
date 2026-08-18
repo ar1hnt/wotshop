@@ -52,6 +52,7 @@ from src.services.sync import (
 )
 from src.services.payments import (
     AccountUnavailableError,
+    AccountPriceChangedError,
     AccountValidationError,
     PaymentError,
     PaymentUnavailableError,
@@ -208,6 +209,9 @@ async def _run_account_purchase_task(
         raise
     except PaymentUnavailableError as error:
         text = translate(language, "payment_unavailable")
+        await _notify_admins_about_account_error(bot, telegram_user, account_id, "purchase", error)
+    except AccountPriceChangedError as error:
+        text = render_catalog_refresh_result_text(language, error.refresh_result)
         await _notify_admins_about_account_error(bot, telegram_user, account_id, "purchase", error)
     except AccountValidationError as error:
         text = render_catalog_refresh_failed_text(language, account_id)

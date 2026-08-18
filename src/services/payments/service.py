@@ -2,7 +2,7 @@ import asyncio
 import hmac
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from html import escape
@@ -21,7 +21,14 @@ from src.db.repositories import CatalogAccountRepository, OrderRepository, Trans
 from src.i18n import Language, translate
 from src.keyboards.inline import build_payment_purchase_failed_markup, build_purchase_completed_markup
 from src.schemas.common.menu import CATALOG_ACCOUNT_SCREEN_MEDIA
-from src.services.sync import LztApiResponseError, LztConfigurationError, LztSyncError, catalog_sync_service
+from src.services.sync import (
+    CatalogRefreshResult,
+    LztApiResponseError,
+    LztConfigurationError,
+    LztSyncError,
+    catalog_sync_service,
+    render_catalog_refresh_result_text,
+)
 from src.services.system import BotSettingsService
 from src.services.transactions import TransactionService
 from src.services.media.media_cache import resolve_photo_input
@@ -46,6 +53,12 @@ class AccountValidationError(PaymentError):
 
 class AccountUnavailableError(PaymentError):
     pass
+
+
+class AccountPriceChangedError(AccountValidationError):
+    def __init__(self, refresh_result: CatalogRefreshResult) -> None:
+        self.refresh_result = refresh_result
+        super().__init__("Supplier price changed during purchase confirmation.")
 
 
 class PlategaCreateTransactionResponse(BaseModel):
@@ -229,6 +242,8 @@ class PaymentService:
             except Exception as error:
                 logger.exception("Balance purchase fulfillment failed transaction_id=%s", transaction.id)
                 await self._rollback_balance_purchase(transaction.id, str(error))
+                if isinstance(error, AccountPriceChangedError):
+                    raise
                 raise AccountUnavailableError("Unable to complete purchase.") from error
             return PurchaseResult(
                 completed=True,
@@ -476,12 +491,14 @@ class PaymentService:
                 reason=str(error),
                 refund_external_payment=True,
             )
+            await self._transaction_service.notify_admins_about_failed_transaction(bot, transaction_id)
             await self._transaction_service.notify_admins_about_purchase_fulfillment_error(
                 bot,
                 transaction_id=transaction_id,
                 error=error,
             )
-            await self._notify_user_purchase_failed(bot, transaction_id)
+            refresh_result = error.refresh_result if isinstance(error, AccountPriceChangedError) else None
+            await self._notify_user_purchase_failed(bot, transaction_id, refresh_result=refresh_result)
             return
         async with async_session_factory() as session:
             transactions = TransactionRepository(session)
@@ -524,6 +541,16 @@ class PaymentService:
                 price=supplier_price,
             )
         except (LztApiResponseError, LztConfigurationError, LztSyncError) as error:
+            if isinstance(error, LztApiResponseError) and _is_supplier_price_changed_error(error):
+                refresh_result = await catalog_sync_service.refresh_account(
+                    local_account_id=transaction.catalog_account_id or 0
+                )
+                # If the recalculated selling price no longer covers the new
+                # supplier price, refresh removes the item. Keep the actual
+                # supplier reason private and show the established safe text.
+                if refresh_result.deleted:
+                    refresh_result = replace(refresh_result, deletion_reason="invalid_credentials")
+                raise AccountPriceChangedError(refresh_result) from error
             raise AccountUnavailableError("LZT Fast Buy failed.") from error
         try:
             managed_item_payload = await client.get_managed_item(supplier_item_id)
@@ -713,7 +740,13 @@ class PaymentService:
         except TelegramAPIError:
             logger.warning("Failed to notify user telegram_id=%s about purchase", telegram_id)
 
-    async def _notify_user_purchase_failed(self, bot: Bot, transaction_id: int) -> None:
+    async def _notify_user_purchase_failed(
+        self,
+        bot: Bot,
+        transaction_id: int,
+        *,
+        refresh_result: CatalogRefreshResult | None = None,
+    ) -> None:
         async with async_session_factory() as session:
             transactions = TransactionRepository(session)
             transaction = await transactions.get_by_id(transaction_id)
@@ -725,18 +758,27 @@ class PaymentService:
             checkout_message_id = transaction.checkout_message_id
             await session.commit()
         try:
+            text = (
+                render_catalog_refresh_result_text(language, refresh_result)
+                if refresh_result is not None
+                else translate(language, "payment_purchase_fulfillment_failed")
+            )
             if checkout_chat_id is not None and checkout_message_id is not None:
                 await bot.edit_message_media(
                     chat_id=checkout_chat_id,
                     message_id=checkout_message_id,
                     media=InputMediaPhoto(
                         media=resolve_photo_input(CATALOG_ACCOUNT_SCREEN_MEDIA),
-                        caption=translate(language, "payment_purchase_fulfillment_failed"),
+                        caption=text,
                     ),
                     reply_markup=build_payment_purchase_failed_markup(language),
                 )
                 return
-            await bot.send_message(telegram_id, translate(language, "payment_purchase_fulfillment_failed"))
+            await bot.send_message(
+                telegram_id,
+                text,
+                reply_markup=build_payment_purchase_failed_markup(language),
+            )
         except TelegramAPIError:
             logger.warning("Failed to notify user telegram_id=%s about purchase failure", telegram_id)
 
@@ -763,6 +805,14 @@ def _transaction_payment_amount(transaction: Transaction) -> Decimal:
 def _format_money(value: Decimal) -> str:
     value = _to_money(value)
     return str(int(value)) if value == value.to_integral() else f"{value:.2f}"
+
+
+def _is_supplier_price_changed_error(error: LztApiResponseError) -> bool:
+    raw_errors = error.payload.get("errors")
+    return isinstance(raw_errors, list) and any(
+        isinstance(item, str) and "цена на аккаунт изменилась" in item.lower()
+        for item in raw_errors
+    )
 
 
 def _account_snapshot(account: CatalogAccount) -> dict[str, object]:

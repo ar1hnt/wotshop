@@ -1,5 +1,6 @@
 from src.services.payments.service import (
     AccountValidationError,
+    AccountPriceChangedError,
     AccountUnavailableError,
     PaymentError,
     PaymentLinkResult,
@@ -13,6 +14,7 @@ payment_service = PaymentService()
 
 __all__ = (
     "AccountValidationError",
+    "AccountPriceChangedError",
     "AccountUnavailableError",
     "PaymentError",
     "PaymentLinkResult",
