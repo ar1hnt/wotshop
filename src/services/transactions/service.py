@@ -267,6 +267,9 @@ class TransactionService:
     async def notify_admins_about_canceled_transaction(self, bot: Bot, transaction_id: int) -> None:
         await self._notify_admins_about_transaction(bot, transaction_id, event="canceled")
 
+    async def notify_admins_about_failed_transaction(self, bot: Bot, transaction_id: int) -> None:
+        await self._notify_admins_about_transaction(bot, transaction_id, event="failed")
+
     async def notify_admins_about_completed_transaction(self, bot: Bot, transaction_id: int) -> None:
         await self._notify_admins_about_transaction(bot, transaction_id, event="completed")
 
@@ -422,6 +425,17 @@ def render_admin_completed_transaction_notification_text(
         lines.append(translate(language, "admin_transaction_supplier_link", value=supplier_item_id))
     if event == "canceled":
         lines.extend(("", translate(language, "admin_transaction_canceled_reason")))
+    elif event == "failed":
+        lines.extend(
+            (
+                "",
+                translate(
+                    language,
+                    "admin_transaction_failed_reason",
+                    reason=escape(detail.failure_reason or "-"),
+                ),
+            )
+        )
     return "\n".join(lines)
 
 
