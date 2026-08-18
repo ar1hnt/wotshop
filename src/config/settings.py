@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_DIR = Path(__file__).resolve().parent
 IMAGES_DIR = CONFIG_DIR / "images"
 LOGS_DIR = BASE_DIR / "logs"
+BACKUPS_DIR = BASE_DIR / "backups"
 
 class Settings(BaseSettings):
     bot_token: str = Field(validation_alias="BOT_TOKEN")
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     support_tag_name: str = Field(validation_alias="SUPPORT_TAG_NAME")
 
     database_url: str = Field(validation_alias="DATABASE_URL")
+    db_dump_password: str | None = Field(default=None, validation_alias="DB_DUMP_PASSWORD")
     default_timezone: ZoneInfo = ZoneInfo("Europe/Moscow")
 
     menu_image_path: Path = IMAGES_DIR / "menu.png"
@@ -48,6 +50,7 @@ class Settings(BaseSettings):
     account_image_path: Path = IMAGES_DIR / "account.png"
     unique_tops_path: Path = CONFIG_DIR / "unique_tops.json"
     app_log_path: Path = LOGS_DIR / "bot.log"
+    database_backups_dir: Path = BACKUPS_DIR
 
     model_config = SettingsConfigDict(
         env_file=".env",

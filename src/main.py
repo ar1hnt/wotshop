@@ -13,6 +13,7 @@ from src.logging import setup_logging
 from src.routers import setup_routers
 from src.services.payments import payment_service
 from src.services.payments.webhook import create_payment_webhook_app
+from src.services.database_backup import DatabaseBackupScheduler, database_backup_service
 from src.services.sync import CatalogSyncScheduler, catalog_sync_service
 
 
@@ -47,12 +48,15 @@ async def main() -> None:
     dispatcher.include_router(setup_routers())
     webhook_runner = await _start_payment_webhook_server(bot)
     payment_service.start(bot)
+    backup_scheduler = DatabaseBackupScheduler(database_backup_service, bot)
     scheduler.start()
+    backup_scheduler.start()
     logger.info("Catalog sync scheduler started")
     try:
         await dispatcher.start_polling(bot, settings=settings)
     finally:
         await scheduler.stop()
+        await backup_scheduler.stop()
         await payment_service.shutdown()
         await webhook_runner.cleanup()
         logger.info("Catalog sync scheduler stopped")

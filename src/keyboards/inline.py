@@ -1323,6 +1323,10 @@ def build_admin_main_markup(language: Language, sales_enabled: bool) -> InlineKe
                     text=translate(language, "admin_button_force_refresh"),
                     callback_data=AdminPanelCallback(action=AdminPanelAction.FORCE_REFRESH).pack(),
                 ),
+                InlineKeyboardButton(
+                    text=translate(language, "admin_button_database_backup"),
+                    callback_data=AdminPanelCallback(action=AdminPanelAction.DATABASE_BACKUP).pack(),
+                ),
             ],
             [
                 InlineKeyboardButton(

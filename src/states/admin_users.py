@@ -9,3 +9,7 @@ class AdminBroadcastState(StatesGroup):
 class AdminUserLookupState(StatesGroup):
     waiting_for_identifier_value = State()
     waiting_for_balance = State()
+
+
+class AdminDatabaseBackupState(StatesGroup):
+    waiting_for_password = State()

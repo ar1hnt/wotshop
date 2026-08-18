@@ -190,6 +190,7 @@ class AdminPanelAction(StrEnum):
     TOGGLE_SALES = "toggle_sales"
     SALES = "sales"
     FORCE_REFRESH = "force_refresh"
+    DATABASE_BACKUP = "database_backup"
     BACK_TO_MAIN = "back_to_main"
 
 
