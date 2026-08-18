@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# Local IDE and runtime files
+.idea/
+logs/
+
+# Local development seed script
+test.py
+example_lolz_search.py
+example_response_check_acc.txt
+example_response_get_account.txt
+example_wot_accounts_data_processing.py
+Инструкция по интеграции API и тестовому платежу.txt
