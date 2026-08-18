@@ -8,14 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
-.env
 
-# Local IDE and runtime files
+# Environment and local runtime files
+.env
 .idea/
 logs/
 
 # Local development seed script
 test.py
+
+# Local API examples and integration notes
 example_lolz_search.py
 example_response_check_acc.txt
 example_response_get_account.txt
