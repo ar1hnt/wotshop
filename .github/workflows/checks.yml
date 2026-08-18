@@ -21,4 +21,4 @@ jobs:
 
       - run: uv sync --frozen
       - run: uv run python -m compileall -q src
-      - run: docker compose config --quiet
+      - run: cp .env.example .env && docker compose config --quiet
