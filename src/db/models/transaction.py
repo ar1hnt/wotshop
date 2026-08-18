@@ -50,6 +50,7 @@ class Transaction(TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     balance_refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship(back_populates="transactions")
     order: Mapped["Order | None"] = relationship(back_populates="transactions")

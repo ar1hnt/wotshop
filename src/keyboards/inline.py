@@ -756,6 +756,26 @@ def build_catalog_purchase_failed_markup(
     )
 
 
+def build_payment_purchase_failed_markup(language: Language) -> InlineKeyboardMarkup:
+    """Fallback navigation after an already paid checkout cannot be fulfilled."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate(language, "back"),
+                    callback_data=NavigationCallback(screen=Screen.BUY.value).pack(),  # type: ignore
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate(language, "back_to_main_menu"),
+                    callback_data=NavigationCallback(screen=Screen.MAIN.value).pack(),  # type: ignore
+                )
+            ],
+        ]
+    )
+
+
 def build_catalog_reset_confirmation_markup(language: Language, game_type: GameAccountType, page: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
