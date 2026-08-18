@@ -48,14 +48,14 @@ async def main() -> None:
     webhook_runner = await _start_payment_webhook_server(bot)
     payment_service.start(bot)
     scheduler.start()
-    logger.info("Catalog sync scheduler started.")
+    logger.info("Catalog sync scheduler started")
     try:
         await dispatcher.start_polling(bot, settings=settings)
     finally:
         await scheduler.stop()
         await payment_service.shutdown()
         await webhook_runner.cleanup()
-        logger.info("Catalog sync scheduler stopped.")
+        logger.info("Catalog sync scheduler stopped")
 
 
 async def _start_payment_webhook_server(bot: Bot):
