@@ -162,6 +162,7 @@ class FaqPageCallback(CallbackData, prefix="faq_page"):
 class FaqDetailCallback(CallbackData, prefix="faq_detail"):
     faq_id: int
     page: int
+    content_page: int = 1
 
 
 class ReviewFlowAction(StrEnum):

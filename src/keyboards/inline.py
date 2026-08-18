@@ -1227,23 +1227,49 @@ def build_public_faq_list_markup(view: FaqListViewSchema) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def build_public_faq_detail_markup(language: Language, *, page: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=translate(language, "back"),
-                    callback_data=FaqPageCallback(page=page).pack(),
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=translate(language, "back_to_main_menu"),
-                    callback_data=NavigationCallback(screen=Screen.MAIN.value).pack(), # type: ignore
-                ),
-            ],
-        ]
-    )
+def build_public_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMarkup:
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    pagination_row: list[InlineKeyboardButton] = []
+    if detail.has_previous_content_page:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text=translate(detail.language, "pagination_previous"),
+                callback_data=FaqDetailCallback(
+                    faq_id=detail.id,
+                    page=detail.page,
+                    content_page=detail.content_page - 1,
+                ).pack(),
+            )
+        )
+    if detail.has_next_content_page:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text=translate(detail.language, "pagination_next"),
+                callback_data=FaqDetailCallback(
+                    faq_id=detail.id,
+                    page=detail.page,
+                    content_page=detail.content_page + 1,
+                ).pack(),
+            )
+        )
+    if pagination_row:
+        inline_keyboard.append(pagination_row)
+
+    inline_keyboard.extend([
+        [
+            InlineKeyboardButton(
+                text=translate(detail.language, "back"),
+                callback_data=FaqPageCallback(page=detail.page).pack(),
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=translate(detail.language, "back_to_main_menu"),
+                callback_data=NavigationCallback(screen=Screen.MAIN.value).pack(), # type: ignore
+            ),
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 def build_admin_back_markup(language: Language, callback_data: str) -> InlineKeyboardMarkup:

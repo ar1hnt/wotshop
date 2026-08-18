@@ -13,7 +13,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "yes": "Да",
         "no": "Нет",
         "menu_main_text": "<b>WOT SHOP</b> — быстрый доступ к лучшим аккаунтам в мире танков.\n\n"
-        "🔥 Приобретайте готовые аккаунты с техникой от 5 ₽.\n\n✨ Ежедневное обновление ассортимента товаров в 00:00 по МСК!\n\n"
+        "🔥 Приобретайте готовые аккаунты с техникой от 20 ₽.\n\n✨ Ежедневное обновление ассортимента товаров в 00:00 по МСК!\n\n"
         "Вы можете управлять ботом следующими командами:",
         "menu_button_buy": "🛒 Купить",
         "menu_button_favorites": "❤️ Избранное",
@@ -138,6 +138,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "faq_page_meta": "📄 Страница: <b>{page}</b> из <b>{total_pages}</b>",
         "faq_total_items": "❔ Всего вопросов: <b>{count}</b>",
         "faq_detail_title": "ℹ️ <b>FAQ</b>",
+        "faq_detail_page_meta": "📄 Часть: <b>{page}</b> из <b>{total_pages}</b>",
         "faq_not_found": "Вопрос FAQ не найден.",
         "profile_username": "👤 Имя пользователя: {username}",
         "profile_id": "🆔 ID: <code>{bot_user_id}</code>",
@@ -573,6 +574,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "faq_page_meta": "📄 Page: <b>{page}</b> of <b>{total_pages}</b>",
         "faq_total_items": "❔ Total questions: <b>{count}</b>",
         "faq_detail_title": "ℹ️ <b>FAQ</b>",
+        "faq_detail_page_meta": "📄 Part: <b>{page}</b> of <b>{total_pages}</b>",
         "faq_not_found": "FAQ question not found.",
         "profile_username": "👤 Username: {username}",
         "profile_id": "🆔 ID: <code>{bot_user_id}</code>",

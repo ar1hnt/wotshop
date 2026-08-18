@@ -103,7 +103,12 @@ async def handle_faq_detail(
         return
 
     try:
-        detail = await faq_service.get_detail(callback.from_user, callback_data.faq_id, page=callback_data.page)
+        detail = await faq_service.get_detail(
+            callback.from_user,
+            callback_data.faq_id,
+            page=callback_data.page,
+            content_page=callback_data.content_page,
+        )
     except FaqNotFoundError:
         language = await faq_service.get_user_language(callback.from_user)
         await callback.answer(translate(language, "faq_not_found"), show_alert=True)
@@ -112,7 +117,7 @@ async def handle_faq_detail(
     await render_screen_message(
         callback.message,
         text=render_public_faq_detail_text(detail),
-        reply_markup=build_public_faq_detail_markup(detail.language, page=detail.page),
+        reply_markup=build_public_faq_detail_markup(detail),
         media=render_menu_view(Screen.FAQ, detail.language).media,
         edit=True,
     )
