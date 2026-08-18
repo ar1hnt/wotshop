@@ -39,7 +39,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            cd /opt/wotshop
+            cd /root/wotshop
             git fetch origin prod
             git checkout prod
             git reset --hard origin/prod
