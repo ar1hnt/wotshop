@@ -33,6 +33,7 @@ LZT_FAST_BUY_MAX_RETRIES = 100
 LZT_RETRY_DELAY_SECONDS = 2
 LZT_PAYOUT_RATIO = CARD_WITHDRAWAL_NET_RATIO
 LZT_MIN_NET_MARGIN_RUB = Decimal("10")
+LZT_MAX_SUPPLIER_LISTING_AGE_DAYS = 31
 LZT_MOSCOW_TIMEZONE = ZoneInfo("Europe/Moscow")
 LZT_WORLD_OF_TANKS_ENDPOINT = "world-of-tanks"
 LZT_WOT_BLITZ_ENDPOINT = "wot-blitz"
@@ -882,6 +883,14 @@ def _normalize_supplier_item(
     if supplier_price <= 0:
         return None
 
+    supplier_loaded_at = _parse_datetime(_item_value(raw_item, "published_date"))
+    # Do not carry old supplier listings into the storefront. A missing
+    # publication date is treated as unsafe and is skipped as well.
+    if supplier_loaded_at is None or datetime.now(UTC) - supplier_loaded_at > timedelta(
+        days=LZT_MAX_SUPPLIER_LISTING_AGE_DAYS
+    ):
+        return None
+
     tanks_payload = _normalize_tanks_payload(raw_item)
     total_tanks = int(_item_value(raw_item, "wot_tanks_count") or len(tanks_payload))
     has_tier_11 = any(int(tank.get("tier") or 0) == 11 for tank in tanks_payload)
@@ -915,9 +924,7 @@ def _normalize_supplier_item(
         "tanks_text": _build_tanks_text(tanks_payload),
         "region": region,
         "tanks_payload": tanks_payload,
-        "supplier_loaded_at": _parse_datetime(
-            _item_value(raw_item, "published_date", "refreshed_date", "supplier_loaded_at")
-        ),
+        "supplier_loaded_at": supplier_loaded_at,
     }
     if preserve_local_id is not None:
         row["id"] = preserve_local_id
