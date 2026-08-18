@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "wotshop"
 version = "0.1.0"
 description = "WOTSHOP — магазин перепродаж аккаунтов Мир Танков, World Of Tanks, Tanks Blitz"
-readme = "docs/README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiogram>=3.29.0",
