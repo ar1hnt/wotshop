@@ -33,6 +33,46 @@ class TransactionNotFoundError(Exception):
 
 
 class TransactionService:
+    async def notify_admins_about_purchase_fulfillment_error(
+        self,
+        bot: Bot,
+        *,
+        transaction_id: int,
+        error: Exception,
+    ) -> None:
+        async with async_session_factory() as session:
+            transactions = TransactionRepository(session)
+            users = UserRepository(session)
+            transaction = await transactions.get_by_id(transaction_id)
+            if transaction is None:
+                await session.commit()
+                return
+            account = await CatalogAccountRepository(session).get_by_id(transaction.catalog_account_id or 0)
+            admin_languages = {
+                admin_id: await _get_admin_language(users, admin_id)
+                for admin_id in settings.admin_ids
+            }
+            await session.commit()
+
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    render_admin_account_operation_error_text(
+                        admin_languages.get(admin_id, Language.RU),
+                        user_id=transaction.user.id,
+                        telegram_id=transaction.user.telegram_id,
+                        username=_normalize_username(transaction.user.username),
+                        account_id=transaction.catalog_account_id or 0,
+                        supplier_item_id=account.supplier_item_id if account is not None else None,
+                        game_type=account.game_type if account is not None else None,
+                        operation="purchase",
+                        error=error,
+                    ),
+                )
+            except TelegramAPIError:
+                logger.warning("Failed to notify admin about purchase fulfillment error transaction_id=%s", transaction_id)
+
     async def notify_admins_about_account_operation_error(
         self,
         bot: Bot,

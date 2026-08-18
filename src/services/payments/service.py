@@ -19,7 +19,7 @@ from src.db.models.catalog_account import CatalogAccount, CatalogAccountStatus, 
 from src.db.models.transaction import Transaction, TransactionStatus, TransactionType
 from src.db.repositories import CatalogAccountRepository, OrderRepository, TransactionRepository, UserRepository
 from src.i18n import Language, translate
-from src.keyboards.inline import build_purchase_completed_markup
+from src.keyboards.inline import build_payment_purchase_failed_markup, build_purchase_completed_markup
 from src.schemas.common.menu import CATALOG_ACCOUNT_SCREEN_MEDIA
 from src.services.sync import LztApiResponseError, LztConfigurationError, LztSyncError, catalog_sync_service
 from src.services.system import BotSettingsService
@@ -471,7 +471,16 @@ class PaymentService:
             delivery_text = await self._fulfill_purchase(transaction_id)
         except Exception as error:
             logger.exception("Purchase fulfillment failed transaction_id=%s", transaction_id)
-            await self._release_purchase_transaction(transaction_id, reason=str(error))
+            await self._release_purchase_transaction(
+                transaction_id,
+                reason=str(error),
+                refund_external_payment=True,
+            )
+            await self._transaction_service.notify_admins_about_purchase_fulfillment_error(
+                bot,
+                transaction_id=transaction_id,
+                error=error,
+            )
             await self._notify_user_purchase_failed(bot, transaction_id)
             return
         async with async_session_factory() as session:
@@ -572,7 +581,13 @@ class PaymentService:
             await transactions.mark_failed(transaction, reason=reason)
             await session.commit()
 
-    async def _release_purchase_transaction(self, transaction_id: int, *, reason: str) -> None:
+    async def _release_purchase_transaction(
+        self,
+        transaction_id: int,
+        *,
+        reason: str,
+        refund_external_payment: bool = False,
+    ) -> None:
         async with async_session_factory() as session:
             users = UserRepository(session)
             transactions = TransactionRepository(session)
@@ -585,6 +600,8 @@ class PaymentService:
             if account is not None:
                 await accounts.release_reservation(account, user_id=transaction.user_id)
             await self._refund_balance_contribution(session, transaction, users=users)
+            if refund_external_payment:
+                await self._refund_external_payment(session, transaction, users=users)
             await transactions.mark_failed(transaction, reason=reason)
             await session.commit()
 
@@ -613,6 +630,24 @@ class PaymentService:
         if user is not None:
             await users.credit_balance(user, _to_money(transaction.balance_amount))
         transaction.balance_refunded_at = datetime.now(UTC)
+        await session.flush()
+
+    async def _refund_external_payment(
+        self,
+        session,
+        transaction: Transaction,
+        *,
+        users: UserRepository | None = None,
+    ) -> None:
+        """Credit a confirmed Platega payment exactly once after failed delivery."""
+        if transaction.payment_amount <= 0 or transaction.payment_refunded_at is not None:
+            return
+
+        users = users or UserRepository(session)
+        user = await users.get_by_id(transaction.user_id)
+        if user is not None:
+            await users.credit_balance(user, _to_money(transaction.payment_amount))
+        transaction.payment_refunded_at = datetime.now(UTC)
         await session.flush()
 
     async def _fail_transaction(self, transaction_id: int, reason: str) -> None:
@@ -686,9 +721,22 @@ class PaymentService:
                 return
             telegram_id = transaction.user.telegram_id
             language = Language(transaction.user.language)
+            checkout_chat_id = transaction.checkout_chat_id
+            checkout_message_id = transaction.checkout_message_id
             await session.commit()
         try:
-            await bot.send_message(telegram_id, translate(language, "payment_purchase_failed"))
+            if checkout_chat_id is not None and checkout_message_id is not None:
+                await bot.edit_message_media(
+                    chat_id=checkout_chat_id,
+                    message_id=checkout_message_id,
+                    media=InputMediaPhoto(
+                        media=resolve_photo_input(CATALOG_ACCOUNT_SCREEN_MEDIA),
+                        caption=translate(language, "payment_purchase_fulfillment_failed"),
+                    ),
+                    reply_markup=build_payment_purchase_failed_markup(language),
+                )
+                return
+            await bot.send_message(telegram_id, translate(language, "payment_purchase_fulfillment_failed"))
         except TelegramAPIError:
             logger.warning("Failed to notify user telegram_id=%s about purchase failure", telegram_id)
 
