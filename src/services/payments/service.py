@@ -56,6 +56,10 @@ class AccountUnavailableError(PaymentError):
     pass
 
 
+class AccountPurchaseFulfillmentError(AccountUnavailableError):
+    """A balance-only fulfillment failure that was already reported to admins."""
+
+
 class AccountPriceChangedError(AccountValidationError):
     def __init__(self, refresh_result: CatalogRefreshResult) -> None:
         self.refresh_result = refresh_result
@@ -251,7 +255,7 @@ class PaymentService:
                 )
                 if isinstance(error, AccountPriceChangedError):
                     raise
-                raise AccountUnavailableError("Unable to complete purchase.") from error
+                raise AccountPurchaseFulfillmentError("Unable to complete purchase.") from error
             return PurchaseResult(
                 completed=True,
                 transaction_id=transaction.id,
@@ -837,7 +841,7 @@ def _extract_supplier_price_from_error(error: LztApiResponseError) -> Decimal | 
         if match is None:
             continue
         try:
-            return _to_money(Decimal(match.group(1).replace(",", ".")))
+            return _to_money(Decimal(match.group(1).rstrip(".,").replace(",", ".")))
         except InvalidOperation:
             continue
     return None
