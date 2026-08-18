@@ -560,13 +560,30 @@ class PaymentService:
                     local_account_id=transaction.catalog_account_id or 0,
                     supplier_price=new_supplier_price,
                 )
-                # If the recalculated selling price no longer covers the new
-                # supplier price, refresh removes the item. Keep the actual
-                # supplier reason private and show the established safe text.
-                if refresh_result.deleted:
-                    refresh_result = replace(refresh_result, deletion_reason="invalid_credentials")
-                raise AccountPriceChangedError(refresh_result) from error
-            raise AccountUnavailableError("LZT Fast Buy failed.") from error
+                if not refresh_result.deleted and not refresh_result.changed:
+                    logger.info(
+                        "Supplier price changed without public price change; retrying confirm-buy "
+                        "transaction_id=%s supplier_item_id=%s price=%s",
+                        transaction_id,
+                        supplier_item_id,
+                        new_supplier_price,
+                    )
+                    try:
+                        confirm_buy_payload = await client.confirm_buy(
+                            supplier_item_id,
+                            price=new_supplier_price,
+                        )
+                    except (LztApiResponseError, LztConfigurationError, LztSyncError) as retry_error:
+                        raise AccountUnavailableError("LZT Fast Buy retry failed.") from retry_error
+                else:
+                    # If the recalculated selling price no longer covers the new
+                    # supplier price, refresh removes the item. Keep the actual
+                    # supplier reason private and show the established safe text.
+                    if refresh_result.deleted:
+                        refresh_result = replace(refresh_result, deletion_reason="invalid_credentials")
+                    raise AccountPriceChangedError(refresh_result) from error
+            else:
+                raise AccountUnavailableError("LZT Fast Buy failed.") from error
         try:
             managed_item_payload = await client.get_managed_item(supplier_item_id)
         except (LztApiResponseError, LztConfigurationError, LztSyncError):
