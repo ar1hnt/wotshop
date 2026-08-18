@@ -13,6 +13,7 @@ wheels/
 .env
 .idea/
 logs/
+backups/
 
 # Local development seed script
 test.py

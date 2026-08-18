@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Bot, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
@@ -55,10 +57,14 @@ from src.services.sync import (
     render_catalog_sync_running_alert,
     render_catalog_sync_started_text,
 )
+from src.services.database_backup import database_backup_service
 from src.services.system import BotSettingsService, render_sales_management_text
 from src.services.transactions import TransactionService, render_admin_transactions_menu_text
 from src.services.users import UserService, render_admin_users_menu_text
 from src.states.reviews import AdminReviewModerationState
+from src.states.admin_users import AdminDatabaseBackupState
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="admin-panel")
 router.message.filter(IsAdminFilter())
@@ -210,6 +216,36 @@ async def handle_admin_panel(
         await callback.answer()
         return
 
+    if callback_data.action == AdminPanelAction.DATABASE_BACKUP:
+        if not database_backup_service.is_configured():
+            await render_screen_message(
+                callback.message,
+                text=translate(language, "admin_database_backup_failed"),
+                reply_markup=build_admin_back_markup(
+                    language,
+                    AdminPanelCallback(action=AdminPanelAction.BACK_TO_MAIN).pack(),
+                ),
+                edit=True,
+            )
+            await callback.answer()
+            return
+        await state.set_state(AdminDatabaseBackupState.waiting_for_password)
+        await state.update_data(
+            anchor_chat_id=callback.message.chat.id,
+            anchor_message_id=callback.message.message_id,
+        )
+        await render_screen_message(
+            callback.message,
+            text=translate(language, "admin_database_backup_password_prompt"),
+            reply_markup=build_admin_back_markup(
+                language,
+                AdminPanelCallback(action=AdminPanelAction.BACK_TO_MAIN).pack(),
+            ),
+            edit=True,
+        )
+        await callback.answer()
+        return
+
     _, sales_enabled = await bot_settings_service.get_admin_context(callback.from_user)
     await render_screen_message(
         callback.message,
@@ -218,6 +254,60 @@ async def handle_admin_panel(
         edit=True,
     )
     await callback.answer()
+
+
+@router.message(AdminDatabaseBackupState.waiting_for_password)
+async def handle_database_backup_password(message: Message, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+
+    language = await review_service.get_user_language(message.from_user)
+    password = message.text or ""
+    if not database_backup_service.password_matches(password):
+        await message.answer(
+            translate(language, "admin_database_backup_invalid_password"),
+            reply_markup=build_admin_back_markup(
+                language,
+                AdminPanelCallback(action=AdminPanelAction.BACK_TO_MAIN).pack(),
+            ),
+        )
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    try:
+        await message.delete()
+    except TelegramAPIError:
+        pass
+
+    await render_screen_message_by_id(
+        message.bot,
+        chat_id=int(data["anchor_chat_id"]),
+        message_id=int(data["anchor_message_id"]),
+        text=translate(language, "admin_database_backup_creating"),
+        reply_markup=build_admin_back_markup(
+            language,
+            AdminPanelCallback(action=AdminPanelAction.BACK_TO_MAIN).pack(),
+        ),
+    )
+    try:
+        await database_backup_service.create_and_notify(message.bot, language=language)
+    except Exception:
+        logger.exception("Manual database backup failed admin_telegram_id=%s", message.from_user.id)
+        result_key = "admin_database_backup_failed"
+    else:
+        result_key = "admin_database_backup_completed"
+
+    await render_screen_message_by_id(
+        message.bot,
+        chat_id=int(data["anchor_chat_id"]),
+        message_id=int(data["anchor_message_id"]),
+        text=translate(language, result_key),
+        reply_markup=build_admin_back_markup(
+            language,
+            AdminPanelCallback(action=AdminPanelAction.BACK_TO_MAIN).pack(),
+        ),
+    )
 
 
 @router.callback_query(AdminSalesCallback.filter())
