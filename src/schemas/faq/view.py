@@ -33,6 +33,8 @@ class FaqDetailSchema(BaseModel):
     language: Language
     id: int
     page: int = Field(ge=1, default=1)
+    content_page: int = Field(ge=1, default=1)
+    total_content_pages: int = Field(ge=1, default=1)
     question_ru: str
     question_en: str
     answer_ru: str
@@ -45,3 +47,11 @@ class FaqDetailSchema(BaseModel):
     @property
     def localized_answer(self) -> str:
         return self.answer_ru if self.language == Language.RU else self.answer_en
+
+    @property
+    def has_previous_content_page(self) -> bool:
+        return self.content_page > 1
+
+    @property
+    def has_next_content_page(self) -> bool:
+        return self.content_page < self.total_content_pages
