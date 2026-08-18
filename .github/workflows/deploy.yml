@@ -44,4 +44,5 @@ jobs:
             git checkout prod
             git reset --hard origin/prod
             docker compose up -d --build
-            docker image prune -f
+            docker image prune -a --force
+            docker builder prune --force

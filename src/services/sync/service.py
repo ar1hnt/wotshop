@@ -80,6 +80,7 @@ class CatalogRefreshResult:
     account_id: int
     local_account_id: int
     change_lines: tuple[str, ...]
+    deletion_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -480,6 +481,22 @@ class CatalogSyncService:
                     supplier_item_id,
                 )
                 check_payload = error.payload
+            elif _is_supplier_listing_removed_error(error.payload):
+                logger.info(
+                    "LZT listing was removed; deleting local account local_account_id=%s supplier_item_id=%s",
+                    local_account_id,
+                    supplier_item_id,
+                )
+                await self._delete_local_account(local_account_id)
+                return CatalogRefreshResult(
+                    exists=False,
+                    changed=False,
+                    deleted=True,
+                    account_id=supplier_item_id,
+                    local_account_id=local_account_id,
+                    change_lines=(),
+                    deletion_reason=_get_supplier_listing_removed_reason(error.payload),
+                )
             else:
                 raise
         managed_payload = await client.get_item(supplier_item_id)
@@ -695,6 +712,13 @@ def render_catalog_refresh_stopped_text(language: Language, account_id: int) -> 
 
 def render_catalog_refresh_result_text(language: Language, result: CatalogRefreshResult) -> str:
     if result.deleted:
+        if result.deletion_reason:
+            return translate(
+                language,
+                "catalog_refresh_deleted_with_reason",
+                account_id=result.local_account_id,
+                reason=translate(language, f"catalog_refresh_deleted_reason_{result.deletion_reason}"),
+            )
         return translate(language, "catalog_refresh_deleted")
     if not result.changed:
         return translate(language, "catalog_refresh_not_changed", account_id=result.local_account_id)
@@ -1034,6 +1058,19 @@ def _has_supplier_change_notice(payload: dict[str, Any]) -> bool:
         if "серьезные изменения" in normalized or "обновите страницу" in normalized:
             return True
     return bool(_extract_change_lines(payload))
+
+
+def _is_supplier_listing_removed_error(payload: dict[str, Any]) -> bool:
+    return any("объявление удалено" in entry.lower() for entry in _iter_error_messages(payload))
+
+
+def _get_supplier_listing_removed_reason(payload: dict[str, Any]) -> str | None:
+    """Show only a safe customer-facing reason for removed supplier listings."""
+    for entry in _iter_error_messages(payload):
+        normalized = entry.lower()
+        if "неправильный логин" in normalized:
+            return "invalid_credentials"
+    return None
 
 
 def _iter_error_messages(payload: dict[str, Any]) -> tuple[str, ...]:
