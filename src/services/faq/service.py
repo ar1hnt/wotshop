@@ -208,17 +208,25 @@ def render_admin_faq_list_text(view: FaqListViewSchema) -> str:
 
 
 def render_admin_faq_detail_text(detail: FaqDetailSchema) -> str:
+    answer_pages = _split_answer_for_caption(detail.localized_answer)
+    answer = answer_pages[detail.content_page - 1]
+    answer_label_key = "admin_faq_field_answer_ru" if detail.language == Language.RU else "admin_faq_field_answer_en"
     return "\n".join(
         (
             translate(detail.language, "admin_faq_detail_title", faq_id=detail.id),
             "",
             _render_admin_block(detail.language, "admin_faq_field_question_ru", detail.question_ru),
             "",
-            _render_admin_block(detail.language, "admin_faq_field_answer_ru", detail.answer_ru),
-            "",
             _render_admin_block(detail.language, "admin_faq_field_question_en", detail.question_en),
             "",
-            _render_admin_block(detail.language, "admin_faq_field_answer_en", detail.answer_en),
+            _render_admin_block(detail.language, answer_label_key, answer),
+            "",
+            translate(
+                detail.language,
+                "faq_detail_page_meta",
+                page=detail.content_page,
+                total_pages=detail.total_content_pages,
+            ),
         )
     )
 

@@ -140,7 +140,12 @@ async def handle_admin_faq_detail(
 
     await state.clear()
     try:
-        detail = await faq_service.get_detail(callback.from_user, callback_data.faq_id, page=callback_data.page)
+        detail = await faq_service.get_detail(
+            callback.from_user,
+            callback_data.faq_id,
+            page=callback_data.page,
+            content_page=callback_data.content_page,
+        )
     except FaqNotFoundError:
         language = await faq_service.get_user_language(callback.from_user)
         await callback.answer(translate(language, "admin_faq_not_found"), show_alert=True)
