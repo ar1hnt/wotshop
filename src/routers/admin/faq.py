@@ -172,7 +172,12 @@ async def handle_admin_faq_edit_field(
         return
 
     try:
-        detail = await faq_service.get_detail(callback.from_user, callback_data.faq_id, page=callback_data.page)
+        detail = await faq_service.get_detail(
+            callback.from_user,
+            callback_data.faq_id,
+            page=callback_data.page,
+            content_page=callback_data.content_page,
+        )
     except FaqNotFoundError:
         language = await faq_service.get_user_language(callback.from_user)
         await callback.answer(translate(language, "admin_faq_not_found"), show_alert=True)
@@ -182,6 +187,7 @@ async def handle_admin_faq_edit_field(
     await state.update_data(
         faq_id=detail.id,
         page=callback_data.page,
+        content_page=detail.content_page,
         mode="edit",
         field_name=callback_data.field.value,
         anchor_chat_id=callback.message.chat.id,
@@ -192,13 +198,22 @@ async def handle_admin_faq_edit_field(
         detail.language,
         mode="edit",
         field_name=callback_data.field.value,
-        current_value=str(getattr(detail, callback_data.field.value)),
+        current_value=(
+            _get_faq_answer_page(detail, callback_data.field.value)
+            if callback_data.field.value.startswith("answer_")
+            else str(getattr(detail, callback_data.field.value))
+        ),
     )
 
     await render_screen_message(
         callback.message,
         text=text,
-        reply_markup=build_admin_faq_prompt_markup(detail.language, faq_id=detail.id, page=callback_data.page),
+        reply_markup=build_admin_faq_prompt_markup(
+            detail.language,
+            faq_id=detail.id,
+            page=callback_data.page,
+            content_page=detail.content_page,
+        ),
         media=render_menu_view(Screen.FAQ, detail.language).media,
         edit=True,
     )
@@ -354,6 +369,13 @@ async def _try_delete_message(message: Message) -> None:
         await message.delete()
     except TelegramBadRequest:
         return
+
+
+def _get_faq_answer_page(detail, field_name: str) -> str:
+    answer = str(getattr(detail, field_name))
+    from src.services.faq.service import _split_answer_for_caption
+
+    return _split_answer_for_caption(answer)[detail.content_page - 1]
 
 
 async def _handle_faq_create_step(

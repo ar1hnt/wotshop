@@ -326,6 +326,7 @@ class AdminFaqEditFieldCallback(CallbackData, prefix="admin_faq_edit_field"):
     faq_id: int
     page: int
     field: AdminFaqEditField
+    content_page: int = 1
 
 
 class AdminFaqDeleteAction(StrEnum):

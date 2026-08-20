@@ -242,7 +242,12 @@ def render_admin_faq_prompt_text(
     prompt_key = "admin_faq_add_field_prompt" if mode == "create" else "admin_faq_edit_field_prompt"
     lines = [translate(language, prompt_key, field_label=field_label)]
     if current_value is not None:
-        lines.extend(("", translate(language, "admin_faq_current_value", value=escape(current_value))))
+        current_value_text = escape(current_value)
+        # Editing a long answer must fit Telegram's media-caption limit too.
+        if field_name.startswith("answer_"):
+            current_value_text = _split_answer_for_caption(current_value)[0]
+            current_value_text = escape(current_value_text)
+        lines.extend(("", translate(language, "admin_faq_current_value", value=current_value_text)))
     return "\n".join(lines)
 
 
