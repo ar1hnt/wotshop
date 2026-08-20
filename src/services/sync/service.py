@@ -13,6 +13,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 
 from src.config import settings
 from src.config.financial import CARD_WITHDRAWAL_NET_RATIO
@@ -33,7 +34,7 @@ LZT_FAST_BUY_MAX_RETRIES = 100
 LZT_RETRY_DELAY_SECONDS = 2
 LZT_PAYOUT_RATIO = CARD_WITHDRAWAL_NET_RATIO
 LZT_MIN_NET_MARGIN_RUB = Decimal("10")
-LZT_MAX_SUPPLIER_LISTING_AGE_DAYS = 31
+LZT_MAX_SUPPLIER_LISTING_AGE_DAYS = 15
 LZT_MOSCOW_TIMEZONE = ZoneInfo("Europe/Moscow")
 LZT_WORLD_OF_TANKS_ENDPOINT = "world-of-tanks"
 LZT_WOT_BLITZ_ENDPOINT = "wot-blitz"
@@ -358,6 +359,16 @@ class CatalogSyncService:
             return None
         return await self.run_full_sync(trigger="scheduled")
 
+    async def notify_admins_about_scheduled_sync(self, bot: Bot, report: CatalogSyncReport) -> None:
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=render_catalog_sync_report_text(Language.RU, report),
+                )
+            except TelegramAPIError:
+                logger.warning("Failed to notify admin telegram_id=%s about scheduled catalog sync", admin_id)
+
     async def run_full_sync(self, *, trigger: str) -> CatalogSyncReport:
         if not self.is_configured():
             raise LztConfigurationError("LZT token is not configured.")
@@ -675,8 +686,9 @@ class CatalogSyncService:
 
 
 class CatalogSyncScheduler:
-    def __init__(self, sync_service: CatalogSyncService) -> None:
+    def __init__(self, sync_service: CatalogSyncService, bot: Bot) -> None:
         self._sync_service = sync_service
+        self._bot = bot
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -700,7 +712,9 @@ class CatalogSyncScheduler:
             logger.info("Next catalog sync is scheduled in %.2f seconds.", delay)
             await asyncio.sleep(delay)
             try:
-                await self._sync_service.run_scheduled_sync()
+                report = await self._sync_service.run_scheduled_sync()
+                if report is not None:
+                    await self._sync_service.notify_admins_about_scheduled_sync(self._bot, report)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -721,6 +735,9 @@ def render_catalog_sync_report_text(language: Language, report: CatalogSyncRepor
         (
             translate(language, "admin_force_refresh_finished_title"),
             "",
+            translate(language, "admin_force_refresh_started_at", value=_format_moscow_datetime(report.started_at)),
+            translate(language, "admin_force_refresh_finished_at", value=_format_moscow_datetime(report.finished_at)),
+            "",
             translate(language, "admin_force_refresh_total", count=report.total_loaded),
             translate(language, "admin_force_refresh_mir_tankov", count=report.mir_tankov_count),
             translate(language, "admin_force_refresh_tanks_blitz", count=report.tanks_blitz_count),
@@ -730,6 +747,10 @@ def render_catalog_sync_report_text(language: Language, report: CatalogSyncRepor
             translate(language, "admin_force_refresh_duration", seconds=duration_seconds),
         )
     )
+
+
+def _format_moscow_datetime(value: datetime) -> str:
+    return value.astimezone(LZT_MOSCOW_TIMEZONE).strftime("%d.%m.%Y %H:%M:%S")
 
 
 def render_catalog_sync_failed_text(language: Language, error: Exception) -> str:
