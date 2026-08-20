@@ -1764,8 +1764,7 @@ def build_admin_faq_list_markup(view: FaqListViewSchema) -> InlineKeyboardMarkup
 
 
 def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    inline_keyboard: list[list[InlineKeyboardButton]] = [
             [
                 InlineKeyboardButton(
                     text=translate(detail.language, "admin_button_edit_faq_question_ru"),
@@ -1824,8 +1823,33 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                     callback_data=AdminFaqActionCallback(action=AdminFaqAction.BACK_TO_MAIN).pack(),
                 ),
             ],
-        ]
-    )
+    ]
+    pagination_row: list[InlineKeyboardButton] = []
+    if detail.has_previous_content_page:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text=translate(detail.language, "pagination_previous"),
+                callback_data=AdminFaqDetailCallback(
+                    faq_id=detail.id,
+                    page=detail.page,
+                    content_page=detail.content_page - 1,
+                ).pack(),
+            )
+        )
+    if detail.has_next_content_page:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text=translate(detail.language, "pagination_next"),
+                callback_data=AdminFaqDetailCallback(
+                    faq_id=detail.id,
+                    page=detail.page,
+                    content_page=detail.content_page + 1,
+                ).pack(),
+            )
+        )
+    if pagination_row:
+        inline_keyboard.insert(2, pagination_row)
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 def build_admin_faq_prompt_markup(language: Language, *, faq_id: int | None = None, page: int = 1) -> InlineKeyboardMarkup:

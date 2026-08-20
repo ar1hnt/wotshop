@@ -312,6 +312,7 @@ class AdminFaqPageCallback(CallbackData, prefix="admin_faq_page"):
 class AdminFaqDetailCallback(CallbackData, prefix="admin_faq_detail"):
     faq_id: int
     page: int
+    content_page: int = 1
 
 
 class AdminFaqEditField(StrEnum):
