@@ -1772,6 +1772,7 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                         faq_id=detail.id,
                         page=detail.page,
                         field=AdminFaqEditField.QUESTION_RU,
+                        content_page=detail.content_page,
                     ).pack(),
                 ),
                 InlineKeyboardButton(
@@ -1780,6 +1781,7 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                         faq_id=detail.id,
                         page=detail.page,
                         field=AdminFaqEditField.QUESTION_EN,
+                        content_page=detail.content_page,
                     ).pack(),
                 ),
             ],
@@ -1790,6 +1792,7 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                         faq_id=detail.id,
                         page=detail.page,
                         field=AdminFaqEditField.ANSWER_RU,
+                        content_page=detail.content_page,
                     ).pack(),
                 ),
                 InlineKeyboardButton(
@@ -1798,6 +1801,7 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                         faq_id=detail.id,
                         page=detail.page,
                         field=AdminFaqEditField.ANSWER_EN,
+                        content_page=detail.content_page,
                     ).pack(),
                 ),
             ],
@@ -1852,9 +1856,15 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def build_admin_faq_prompt_markup(language: Language, *, faq_id: int | None = None, page: int = 1) -> InlineKeyboardMarkup:
+def build_admin_faq_prompt_markup(
+    language: Language,
+    *,
+    faq_id: int | None = None,
+    page: int = 1,
+    content_page: int = 1,
+) -> InlineKeyboardMarkup:
     back_callback = (
-        AdminFaqDetailCallback(faq_id=faq_id, page=page).pack()
+        AdminFaqDetailCallback(faq_id=faq_id, page=page, content_page=content_page).pack()
         if faq_id is not None
         else AdminFaqPageCallback(page=page).pack()
     )
