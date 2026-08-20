@@ -37,12 +37,11 @@ def _run_migrations() -> None:
 
 
 async def main() -> None:
-    scheduler = CatalogSyncScheduler(catalog_sync_service)
-
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    scheduler = CatalogSyncScheduler(catalog_sync_service, bot)
 
     dispatcher = Dispatcher()
     dispatcher.include_router(setup_routers())
