@@ -315,6 +315,25 @@ class AdminFaqDetailCallback(CallbackData, prefix="admin_faq_detail"):
     content_page: int = 1
 
 
+class AdminFaqAnswerLanguage(StrEnum):
+    RU = "ru"
+    EN = "en"
+
+
+class AdminFaqAnswerCallback(CallbackData, prefix="admin_faq_answer"):
+    faq_id: int
+    page: int
+    language: AdminFaqAnswerLanguage
+    content_page: int = 1
+
+
+class AdminFaqAnswerEditCallback(CallbackData, prefix="admin_faq_answer_edit"):
+    faq_id: int
+    page: int
+    language: AdminFaqAnswerLanguage
+    content_page: int = 1
+
+
 class AdminFaqEditField(StrEnum):
     QUESTION_RU = "question_ru"
     QUESTION_EN = "question_en"

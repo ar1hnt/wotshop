@@ -11,6 +11,9 @@ from src.keyboards.callbacks import (
     AdminFaqAction,
     AdminFaqActionCallback,
     AdminFaqAddCallback,
+    AdminFaqAnswerCallback,
+    AdminFaqAnswerEditCallback,
+    AdminFaqAnswerLanguage,
     AdminFaqDeleteAction,
     AdminFaqDeleteCallback,
     AdminFaqDetailCallback,
@@ -1788,19 +1791,19 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
             [
                 InlineKeyboardButton(
                     text=translate(detail.language, "admin_button_edit_faq_answer_ru"),
-                    callback_data=AdminFaqEditFieldCallback(
+                    callback_data=AdminFaqAnswerCallback(
                         faq_id=detail.id,
                         page=detail.page,
-                        field=AdminFaqEditField.ANSWER_RU,
+                        language=AdminFaqAnswerLanguage.RU,
                         content_page=detail.content_page,
                     ).pack(),
                 ),
                 InlineKeyboardButton(
                     text=translate(detail.language, "admin_button_edit_faq_answer_en"),
-                    callback_data=AdminFaqEditFieldCallback(
+                    callback_data=AdminFaqAnswerCallback(
                         faq_id=detail.id,
                         page=detail.page,
-                        field=AdminFaqEditField.ANSWER_EN,
+                        language=AdminFaqAnswerLanguage.EN,
                         content_page=detail.content_page,
                     ).pack(),
                 ),
@@ -1828,14 +1831,22 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
                 ),
             ],
     ]
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def build_admin_faq_answer_markup(
+    detail: FaqDetailSchema,
+    answer_language: AdminFaqAnswerLanguage,
+) -> InlineKeyboardMarkup:
     pagination_row: list[InlineKeyboardButton] = []
     if detail.has_previous_content_page:
         pagination_row.append(
             InlineKeyboardButton(
                 text=translate(detail.language, "pagination_previous"),
-                callback_data=AdminFaqDetailCallback(
+                callback_data=AdminFaqAnswerCallback(
                     faq_id=detail.id,
                     page=detail.page,
+                    language=answer_language,
                     content_page=detail.content_page - 1,
                 ).pack(),
             )
@@ -1844,16 +1855,51 @@ def build_admin_faq_detail_markup(detail: FaqDetailSchema) -> InlineKeyboardMark
         pagination_row.append(
             InlineKeyboardButton(
                 text=translate(detail.language, "pagination_next"),
-                callback_data=AdminFaqDetailCallback(
+                callback_data=AdminFaqAnswerCallback(
                     faq_id=detail.id,
                     page=detail.page,
+                    language=answer_language,
                     content_page=detail.content_page + 1,
                 ).pack(),
             )
         )
+
+    rows: list[list[InlineKeyboardButton]] = []
     if pagination_row:
-        inline_keyboard.insert(2, pagination_row)
-    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+        rows.append(pagination_row)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=translate(
+                    detail.language,
+                    "admin_button_edit_faq_answer_ru" if answer_language == AdminFaqAnswerLanguage.RU else "admin_button_edit_faq_answer_en",
+                ),
+                callback_data=AdminFaqAnswerEditCallback(
+                    faq_id=detail.id,
+                    page=detail.page,
+                    language=answer_language,
+                    content_page=detail.content_page,
+                ).pack(),
+            )
+        ]
+    )
+    rows.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    text=translate(detail.language, "back"),
+                    callback_data=AdminFaqDetailCallback(faq_id=detail.id, page=detail.page).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate(detail.language, "back_to_main_menu"),
+                    callback_data=AdminFaqActionCallback(action=AdminFaqAction.BACK_TO_MAIN).pack(),
+                )
+            ],
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_admin_faq_prompt_markup(
@@ -1862,9 +1908,17 @@ def build_admin_faq_prompt_markup(
     faq_id: int | None = None,
     page: int = 1,
     content_page: int = 1,
+    answer_language: AdminFaqAnswerLanguage | None = None,
 ) -> InlineKeyboardMarkup:
     back_callback = (
-        AdminFaqDetailCallback(faq_id=faq_id, page=page, content_page=content_page).pack()
+        AdminFaqAnswerCallback(
+            faq_id=faq_id,
+            page=page,
+            language=answer_language,
+            content_page=content_page,
+        ).pack()
+        if faq_id is not None and answer_language is not None
+        else AdminFaqDetailCallback(faq_id=faq_id, page=page, content_page=content_page).pack()
         if faq_id is not None
         else AdminFaqPageCallback(page=page).pack()
     )

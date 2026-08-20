@@ -64,6 +64,7 @@ class FaqService:
         faq_id: int,
         page: int = 1,
         content_page: int = 1,
+        answer_language: Language | None = None,
     ) -> FaqDetailSchema:
         async with async_session_factory() as session:
             user_repository = UserRepository(session)
@@ -80,6 +81,7 @@ class FaqService:
             Language(user.language),
             page=page,
             content_page=content_page,
+            answer_language=answer_language,
         )
 
     async def get_admin_list(self, admin_user: TelegramUser, page: int = 1) -> FaqListViewSchema:
@@ -121,6 +123,8 @@ class FaqService:
         page: int,
         field_name: str,
         value: str,
+        content_page: int = 1,
+        answer_language: Language | None = None,
     ) -> FaqDetailSchema:
         normalized_value = value.strip()
         if field_name not in FAQ_FIELD_SEQUENCE or not normalized_value:
@@ -137,7 +141,13 @@ class FaqService:
             await faq_repository.update_localized_field(item, field_name, normalized_value)
             await session.commit()
 
-        return _to_detail_schema(item, Language(admin.language), page=page)
+        return _to_detail_schema(
+            item,
+            Language(admin.language),
+            page=page,
+            content_page=content_page,
+            answer_language=answer_language,
+        )
 
     async def delete(self, admin_user: TelegramUser, *, faq_id: int) -> Language:
         async with async_session_factory() as session:
@@ -208,9 +218,6 @@ def render_admin_faq_list_text(view: FaqListViewSchema) -> str:
 
 
 def render_admin_faq_detail_text(detail: FaqDetailSchema) -> str:
-    answer_pages = _split_answer_for_caption(detail.localized_answer)
-    answer = answer_pages[detail.content_page - 1]
-    answer_label_key = "admin_faq_field_answer_ru" if detail.language == Language.RU else "admin_faq_field_answer_en"
     return "\n".join(
         (
             translate(detail.language, "admin_faq_detail_title", faq_id=detail.id),
@@ -218,15 +225,31 @@ def render_admin_faq_detail_text(detail: FaqDetailSchema) -> str:
             _render_admin_block(detail.language, "admin_faq_field_question_ru", detail.question_ru),
             "",
             _render_admin_block(detail.language, "admin_faq_field_question_en", detail.question_en),
+        )
+    )
+
+
+def render_admin_faq_answer_text(detail: FaqDetailSchema, answer_language: Language) -> str:
+    answer = detail.answer_ru if answer_language == Language.RU else detail.answer_en
+    question = detail.question_ru if answer_language == Language.RU else detail.question_en
+    answer_label_key = (
+        "admin_faq_field_answer_ru" if answer_language == Language.RU else "admin_faq_field_answer_en"
+    )
+    answer_pages = _split_answer_for_caption(answer)
+    return "\n".join(
+        (
+            translate(answer_language, "admin_faq_answer_title", faq_id=detail.id),
             "",
-            _render_admin_block(detail.language, answer_label_key, answer),
+            _render_admin_block(answer_language, "admin_faq_field_question_ru" if answer_language == Language.RU else "admin_faq_field_question_en", question),
             "",
             translate(
-                detail.language,
+                answer_language,
                 "faq_detail_page_meta",
                 page=detail.content_page,
-                total_pages=detail.total_content_pages,
+                total_pages=len(answer_pages),
             ),
+            "",
+            _render_admin_block(answer_language, answer_label_key, answer_pages[detail.content_page - 1]),
         )
     )
 
@@ -281,8 +304,9 @@ def _to_detail_schema(
     *,
     page: int,
     content_page: int = 1,
+    answer_language: Language | None = None,
 ) -> FaqDetailSchema:
-    localized_answer = _get_localized_value(item, language, kind="answer")
+    localized_answer = _get_localized_value(item, answer_language or language, kind="answer")
     total_content_pages = len(_split_answer_for_caption(localized_answer))
     return FaqDetailSchema(
         language=language,
