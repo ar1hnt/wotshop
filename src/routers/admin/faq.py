@@ -4,11 +4,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from src.filters.admin import IsAdminFilter
-from src.i18n import translate
+from src.i18n import Language, translate
 from src.keyboards.callbacks import (
     AdminFaqAction,
     AdminFaqActionCallback,
     AdminFaqAddCallback,
+    AdminFaqAnswerCallback,
+    AdminFaqAnswerEditCallback,
+    AdminFaqAnswerLanguage,
     AdminFaqDeleteAction,
     AdminFaqDeleteCallback,
     AdminFaqDetailCallback,
@@ -18,6 +21,7 @@ from src.keyboards.callbacks import (
 from src.keyboards.inline import (
     build_admin_back_markup,
     build_admin_faq_delete_confirmation_markup,
+    build_admin_faq_answer_markup,
     build_admin_faq_detail_markup,
     build_admin_faq_list_markup,
     build_admin_faq_prompt_markup,
@@ -31,6 +35,7 @@ from src.services.faq import (
     FaqService,
     FaqValidationError,
     render_admin_faq_delete_confirmation_text,
+    render_admin_faq_answer_text,
     render_admin_faq_detail_text,
     render_admin_faq_list_text,
     render_admin_faq_prompt_text,
@@ -220,6 +225,99 @@ async def handle_admin_faq_edit_field(
     await callback.answer()
 
 
+@router.callback_query(AdminFaqAnswerCallback.filter())
+async def handle_admin_faq_answer(
+    callback: CallbackQuery,
+    callback_data: AdminFaqAnswerCallback,
+    state: FSMContext,
+) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    answer_language = Language(callback_data.language.value)
+    await state.clear()
+    try:
+        detail = await faq_service.get_detail(
+            callback.from_user,
+            callback_data.faq_id,
+            page=callback_data.page,
+            content_page=callback_data.content_page,
+            answer_language=answer_language,
+        )
+    except FaqNotFoundError:
+        language = await faq_service.get_user_language(callback.from_user)
+        await callback.answer(translate(language, "admin_faq_not_found"), show_alert=True)
+        return
+
+    await render_screen_message(
+        callback.message,
+        text=render_admin_faq_answer_text(detail, answer_language),
+        reply_markup=build_admin_faq_answer_markup(detail, callback_data.language),
+        media=render_menu_view(Screen.FAQ, detail.language).media,
+        edit=True,
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminFaqAnswerEditCallback.filter())
+async def handle_admin_faq_answer_edit(
+    callback: CallbackQuery,
+    callback_data: AdminFaqAnswerEditCallback,
+    state: FSMContext,
+) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    answer_language = Language(callback_data.language.value)
+    field_name = "answer_ru" if answer_language == Language.RU else "answer_en"
+    try:
+        detail = await faq_service.get_detail(
+            callback.from_user,
+            callback_data.faq_id,
+            page=callback_data.page,
+            content_page=callback_data.content_page,
+            answer_language=answer_language,
+        )
+    except FaqNotFoundError:
+        language = await faq_service.get_user_language(callback.from_user)
+        await callback.answer(translate(language, "admin_faq_not_found"), show_alert=True)
+        return
+
+    await state.clear()
+    await state.update_data(
+        faq_id=detail.id,
+        page=callback_data.page,
+        content_page=detail.content_page,
+        answer_language=answer_language.value,
+        mode="edit",
+        field_name=field_name,
+        anchor_chat_id=callback.message.chat.id,
+        anchor_message_id=callback.message.message_id,
+    )
+    await state.set_state(AdminFaqState.waiting_for_text)
+    await render_screen_message(
+        callback.message,
+        text=render_admin_faq_prompt_text(
+            detail.language,
+            mode="edit",
+            field_name=field_name,
+            current_value=_get_faq_answer_page(detail, field_name),
+        ),
+        reply_markup=build_admin_faq_prompt_markup(
+            detail.language,
+            faq_id=detail.id,
+            page=callback_data.page,
+            content_page=detail.content_page,
+            answer_language=callback_data.language,
+        ),
+        media=render_menu_view(Screen.FAQ, detail.language).media,
+        edit=True,
+    )
+    await callback.answer()
+
+
 @router.callback_query(AdminFaqDeleteCallback.filter())
 async def handle_admin_faq_delete(
     callback: CallbackQuery,
@@ -296,6 +394,8 @@ async def handle_faq_text_input(
                 language,
                 faq_id=int(data["faq_id"]) if data.get("faq_id") is not None else None,
                 page=int(data.get("page", 1)),
+                content_page=int(data.get("content_page", 1)),
+                answer_language=_get_answer_callback_language(data),
             ),
         )
         return
@@ -308,6 +408,12 @@ async def handle_faq_text_input(
                 page=int(data.get("page", 1)),
                 field_name=str(data["field_name"]),
                 value=new_value,
+                content_page=int(data.get("content_page", 1)),
+                answer_language=(
+                    Language(str(data["answer_language"]))
+                    if data.get("answer_language") is not None
+                    else None
+                ),
             )
         else:
             detail = await _handle_faq_create_step(
@@ -326,6 +432,8 @@ async def handle_faq_text_input(
                 language,
                 faq_id=int(data["faq_id"]) if data.get("faq_id") is not None else None,
                 page=int(data.get("page", 1)),
+                content_page=int(data.get("content_page", 1)),
+                answer_language=_get_answer_callback_language(data),
             ),
         )
         return
@@ -337,18 +445,30 @@ async def handle_faq_text_input(
                 language,
                 faq_id=int(data["faq_id"]) if data.get("faq_id") is not None else None,
                 page=int(data.get("page", 1)),
+                content_page=int(data.get("content_page", 1)),
+                answer_language=_get_answer_callback_language(data),
             ),
         )
         return
 
     await _try_delete_message(message)
     await state.clear()
+    answer_language_value = data.get("answer_language")
+    if answer_language_value is not None:
+        answer_language = Language(str(answer_language_value))
+        answer_callback_language = AdminFaqAnswerLanguage(answer_language.value)
+        text = render_admin_faq_answer_text(detail, answer_language)
+        reply_markup = build_admin_faq_answer_markup(detail, answer_callback_language)
+    else:
+        text = render_admin_faq_detail_text(detail)
+        reply_markup = build_admin_faq_detail_markup(detail)
+
     await render_screen_message_by_id(
         message.bot,
         chat_id=int(data["anchor_chat_id"]),
         message_id=int(data["anchor_message_id"]),
-        text=render_admin_faq_detail_text(detail),
-        reply_markup=build_admin_faq_detail_markup(detail),
+        text=text,
+        reply_markup=reply_markup,
         media=render_menu_view(Screen.FAQ, detail.language).media,
     )
 
@@ -376,6 +496,11 @@ def _get_faq_answer_page(detail, field_name: str) -> str:
     from src.services.faq.service import _split_answer_for_caption
 
     return _split_answer_for_caption(answer)[detail.content_page - 1]
+
+
+def _get_answer_callback_language(data: dict) -> AdminFaqAnswerLanguage | None:
+    answer_language = data.get("answer_language")
+    return AdminFaqAnswerLanguage(str(answer_language)) if answer_language is not None else None
 
 
 async def _handle_faq_create_step(
