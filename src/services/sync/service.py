@@ -26,10 +26,11 @@ logger = logging.getLogger(__name__)
 
 LZT_API_BASE_URL = "https://prod-api.lzt.market"
 LZT_CATEGORY_PAGE_DELAY_SECONDS = 0.5
-LZT_CATEGORY_LIMIT_PER_GAME = 5000
+LZT_CATEGORY_LIMIT_PER_GAME = 3000
+LZT_MAX_CONSECUTIVE_EMPTY_ACCEPTED_PAGES = 15
 LZT_REQUEST_TIMEOUT_SECONDS = 30
-LZT_CHECK_TIMEOUT_SECONDS = 310
-LZT_MAX_RETRIES = 3
+LZT_CHECK_TIMEOUT_SECONDS = 400
+LZT_MAX_RETRIES = 10
 LZT_FAST_BUY_MAX_RETRIES = 100
 LZT_RETRY_DELAY_SECONDS = 2
 LZT_PAYOUT_RATIO = CARD_WITHDRAWAL_NET_RATIO
@@ -360,14 +361,30 @@ class CatalogSyncService:
         return await self.run_full_sync(trigger="scheduled")
 
     async def notify_admins_about_scheduled_sync(self, bot: Bot, report: CatalogSyncReport) -> None:
+        if not settings.admin_ids:
+            logger.warning(
+                "Scheduled catalog sync completed, but no admins configured for completion notification. "
+                "Set ADMIN_IDS in the environment."
+            )
+            return
+
+        text = render_catalog_sync_report_text(Language.RU, report)
         for admin_id in settings.admin_ids:
             try:
                 await bot.send_message(
                     chat_id=admin_id,
-                    text=render_catalog_sync_report_text(Language.RU, report),
+                    text=text,
                 )
             except TelegramAPIError:
-                logger.warning("Failed to notify admin telegram_id=%s about scheduled catalog sync", admin_id)
+                logger.exception(
+                    "Failed to notify admin telegram_id=%s about scheduled catalog sync completion",
+                    admin_id,
+                )
+            else:
+                logger.info(
+                    "Scheduled catalog sync completion notification sent to admin telegram_id=%s",
+                    admin_id,
+                )
 
     async def run_full_sync(self, *, trigger: str) -> CatalogSyncReport:
         if not self.is_configured():
@@ -396,6 +413,7 @@ class CatalogSyncService:
                         source.game_type.value,
                     )
                     page = 1
+                    consecutive_empty_accepted_pages = 0
                     while loaded_by_game_type[source.game_type] < LZT_CATEGORY_LIMIT_PER_GAME:
                         payload = await client.fetch_category_page(source, page=page)
                         items = payload.get("items") or []
@@ -422,6 +440,11 @@ class CatalogSyncService:
                             loaded_by_game_type[game_type] += 1
                             accepted_on_page += 1
 
+                        if accepted_on_page:
+                            consecutive_empty_accepted_pages = 0
+                        else:
+                            consecutive_empty_accepted_pages += 1
+
                         logger.info(
                             "LZT page processed endpoint=%s region=%s game_type=%s page=%s items=%s accepted=%s loaded=%s/%s",
                             source.endpoint_slug,
@@ -436,6 +459,18 @@ class CatalogSyncService:
 
                         has_next_page = bool(payload.get("hasNextPage"))
                         if not items or not has_next_page:
+                            break
+                        if consecutive_empty_accepted_pages >= LZT_MAX_CONSECUTIVE_EMPTY_ACCEPTED_PAGES:
+                            logger.info(
+                                "Stopping LZT source endpoint=%s region=%s game_type=%s after %s consecutive "
+                                "pages without accepted accounts; loaded=%s/%s",
+                                source.endpoint_slug,
+                                source.country,
+                                source.game_type.value,
+                                consecutive_empty_accepted_pages,
+                                loaded_by_game_type[source.game_type],
+                                LZT_CATEGORY_LIMIT_PER_GAME,
+                            )
                             break
 
                         page += 1
@@ -708,7 +743,7 @@ class CatalogSyncScheduler:
 
     async def _run(self) -> None:
         while True:
-            delay = _seconds_until_next_moscow_midnight()
+            delay = _seconds_until_next_moscow_one_am()
             logger.info("Next catalog sync is scheduled in %.2f seconds.", delay)
             await asyncio.sleep(delay)
             try:
@@ -1220,11 +1255,12 @@ def _apply_account_mapping(account: CatalogAccount, data: dict[str, object]) -> 
         setattr(account, field_name, value)
 
 
-def _seconds_until_next_moscow_midnight() -> float:
+def _seconds_until_next_moscow_one_am() -> float:
     now = datetime.now(tz=LZT_MOSCOW_TIMEZONE)
-    tomorrow = now.date() + timedelta(days=1)
-    next_midnight = datetime.combine(tomorrow, datetime.min.time(), tzinfo=LZT_MOSCOW_TIMEZONE)
-    return max((next_midnight - now).total_seconds(), 1.0)
+    next_run = datetime.combine(now.date(), datetime.min.time().replace(hour=1), tzinfo=LZT_MOSCOW_TIMEZONE)
+    if next_run <= now:
+        next_run += timedelta(days=1)
+    return max((next_run - now).total_seconds(), 1.0)
 
 
 def _format_decimal(value: Any) -> str:

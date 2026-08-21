@@ -618,7 +618,7 @@ def _render_filter_page_summary(view: CatalogFilterViewSchema) -> str:
     lines = [translate(view.language, "catalog_filter_current_values")]
     not_set_label = translate(view.language, "catalog_filter_not_set")
 
-    for field in _filter_page_fields(view.game_type, view.page):
+    for field in _all_filter_fields(view.game_type):
         value_label = _filter_value_label(view.language, view.catalog_filter, field)
         formatted_value = value_label if value_label == not_set_label else f"<b>{value_label}</b>"
         lines.append(
@@ -630,6 +630,14 @@ def _render_filter_page_summary(view: CatalogFilterViewSchema) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def _all_filter_fields(game_type: GameAccountType) -> tuple[CatalogFilterField, ...]:
+    return tuple(
+        field
+        for page in range(1, FILTER_PAGES_COUNT + 1)
+        for field in _filter_page_fields(game_type, page)
+    )
 
 
 def _filter_value_label(language: Language, catalog_filter: CatalogFilterSchema, field: CatalogFilterField) -> str:
