@@ -13,7 +13,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "yes": "Да",
         "no": "Нет",
         "menu_main_text": "<b>WOT SHOP</b> — быстрый доступ к лучшим аккаунтам в мире танков.\n\n"
-        "🔥 Приобретайте готовые аккаунты с техникой от 20 ₽.\n\n✨ Ежедневное обновление ассортимента товаров в 00:00 по МСК!\n\n"
+        "🔥 Приобретайте готовые аккаунты с техникой от 20 ₽.\n\n"
         "Вы можете управлять ботом следующими командами:",
         "menu_button_buy": "🛒 Купить",
         "menu_button_favorites": "❤️ Избранное",
@@ -52,6 +52,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "catalog_filter_any_value": "Любое",
         "catalog_button_clear_field": "🗑 Очистить поле",
         "catalog_button_search": "🔍 Поиск",
+        "catalog_search_in_progress": "🔍 <b>Поиск аккаунтов...</b>",
         "catalog_button_reset_filter": "♻️ Сбросить фильтр",
         "catalog_reset_confirm_text": "♻️ <b>Сбросить фильтр?</b>\n\nВсе выбранные значения фильтра для этого клиента игры будут очищены.",
         "catalog_filter_field_top_tanks": "Топы",
@@ -503,6 +504,7 @@ TRANSLATIONS: dict[Language, dict[str, str]] = {
         "catalog_filter_any_value": "Any",
         "catalog_button_clear_field": "🗑 Clear field",
         "catalog_button_search": "🔎 Search",
+        "catalog_search_in_progress": "🔎 <b>Searching for accounts...</b>",
         "catalog_button_reset_filter": "♻️ Reset filter",
         "catalog_reset_confirm_text": "♻️ <b>Reset filter?</b>\n\nAll selected filter values for this game will be cleared.",
         "catalog_filter_field_top_tanks": "Top tanks",

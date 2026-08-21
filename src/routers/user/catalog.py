@@ -27,6 +27,7 @@ from src.keyboards.inline import (
     build_catalog_boolean_markup,
     build_catalog_filter_input_back_markup,
     build_catalog_filter_markup,
+    build_catalog_search_progress_markup,
     build_catalog_reset_confirmation_markup,
     build_catalog_results_markup,
 )
@@ -243,6 +244,16 @@ async def handle_catalog_filter_action(
         await callback.answer()
         return
 
+    language = await catalog_service.get_user_language(callback.from_user)
+    await render_screen_message(
+        callback.message,
+        text=translate(language, "catalog_search_in_progress"),
+        reply_markup=build_catalog_search_progress_markup(language, game_type, callback_data.page),
+        media=CATALOG_FILTER_SCREEN_MEDIA,
+        edit=True,
+    )
+    await callback.answer()
+
     results = await catalog_service.get_search_results(callback.from_user, game_type=game_type, page=1)
     await render_screen_message(
         callback.message,
@@ -251,7 +262,6 @@ async def handle_catalog_filter_action(
         media=CATALOG_RESULTS_SCREEN_MEDIA,
         edit=True,
     )
-    await callback.answer()
 
 
 @router.callback_query(CatalogClearFieldCallback.filter())
