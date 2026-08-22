@@ -18,6 +18,8 @@ class UserCatalogFilter(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     game_type: Mapped[str] = mapped_column(String(32), default=GameAccountType.MIR_TANKOV.value, nullable=False)
 
+    sale_price_min: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    sale_price_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     top_tank_count_min: Mapped[int | None] = mapped_column()
     top_tank_count_max: Mapped[int | None] = mapped_column()
     premium_tank_count_min: Mapped[int | None] = mapped_column()
@@ -47,8 +49,8 @@ class UserCatalogFilter(TimestampMixin, Base):
     supplier_loaded_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     supplier_loaded_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    active_sort_field: Mapped[str] = mapped_column(String(32), default=CatalogSortField.NEWEST.value, nullable=False)
-    price_sort_direction: Mapped[str] = mapped_column(String(4), default=SortDirection.DESC.value, nullable=False)
+    active_sort_field: Mapped[str] = mapped_column(String(32), default=CatalogSortField.PRICE.value, nullable=False)
+    price_sort_direction: Mapped[str] = mapped_column(String(4), default=SortDirection.ASC.value, nullable=False)
     last_activity_sort_direction: Mapped[str] = mapped_column(String(4), default=SortDirection.ASC.value, nullable=False)
     newest_sort_direction: Mapped[str] = mapped_column(String(4), default=SortDirection.DESC.value, nullable=False)
 

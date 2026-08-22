@@ -12,10 +12,11 @@ from src.i18n import Language
 
 DATE_INPUT_FORMAT = "%d.%m.%Y"
 CATALOG_PAGE_SIZE = 10
-FILTER_PAGES_COUNT = 2
+FILTER_PAGES_COUNT = 1
 
 
 class CatalogFilterField(StrEnum):
+    PRICE = "price"
     TOP_TANK_COUNT = "top_tank_count"
     PREMIUM_TANK_COUNT = "premium_tank_count"
     TOTAL_TANK_COUNT = "total_tank_count"
@@ -44,6 +45,8 @@ class CatalogFilterSchema(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     game_type: GameAccountType
+    sale_price_min: Decimal | None = None
+    sale_price_max: Decimal | None = None
     top_tank_count_min: int | None = None
     top_tank_count_max: int | None = None
     premium_tank_count_min: int | None = None
@@ -178,7 +181,7 @@ class CatalogIntegerRangeInputSchema(BaseModel):
     def from_raw(cls, raw_value: str) -> "CatalogIntegerRangeInputSchema":
         value = raw_value.strip().replace(" ", "")
         if re.fullmatch(r"\d+", value):
-            parsed = cls(raw_value=raw_value, min_value=int(value), max_value=int(value))
+            parsed = cls(raw_value=raw_value, min_value=int(value), max_value=None)
         elif re.fullmatch(r"\d+\+", value):
             parsed = cls(raw_value=raw_value, min_value=int(value[:-1]), max_value=None)
         elif re.fullmatch(r"\d+-\d+", value):
@@ -209,7 +212,7 @@ class CatalogDecimalRangeInputSchema(BaseModel):
         value = raw_value.strip().replace(" ", "").replace(",", ".")
         decimal_pattern = r"\d+(?:\.\d{1,2})?"
         if re.fullmatch(decimal_pattern, value):
-            parsed = cls(raw_value=raw_value, min_value=Decimal(value), max_value=Decimal(value))
+            parsed = cls(raw_value=raw_value, min_value=Decimal(value), max_value=None)
         elif re.fullmatch(fr"{decimal_pattern}\+", value):
             parsed = cls(raw_value=raw_value, min_value=Decimal(value[:-1]), max_value=None)
         elif re.fullmatch(fr"{decimal_pattern}-{decimal_pattern}", value):

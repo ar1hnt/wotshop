@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models.favorite import Favorite
@@ -40,3 +40,10 @@ class FavoriteRepository:
     async def remove(self, favorite: Favorite) -> None:
         await self.session.delete(favorite)
         await self.session.flush()
+
+    async def remove_by_ids(self, favorite_ids: list[int]) -> int:
+        if not favorite_ids:
+            return 0
+        result = await self.session.execute(delete(Favorite).where(Favorite.id.in_(favorite_ids)))
+        await self.session.flush()
+        return int(result.rowcount or 0)

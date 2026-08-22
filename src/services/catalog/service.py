@@ -37,10 +37,11 @@ from src.schemas.favorites import FavoritesPageSchema
 
 logger = logging.getLogger(__name__)
 
-CATALOG_FAVORITE_PREFIX = "catalog_account:"
+CATALOG_FAVORITE_PREFIX = "catalog_supplier:"
 CATALOG_INACTIVITY_MARK_DAYS = 60
 
 FILTER_FIELD_META: dict[CatalogFilterField, dict[str, str]] = {
+    CatalogFilterField.PRICE: {"kind": "decimal", "min": "sale_price_min", "max": "sale_price_max"},
     CatalogFilterField.TOP_TANK_COUNT: {"kind": "int", "min": "top_tank_count_min", "max": "top_tank_count_max"},
     CatalogFilterField.PREMIUM_TANK_COUNT: {"kind": "int", "min": "premium_tank_count_min", "max": "premium_tank_count_max"},
     CatalogFilterField.TOTAL_TANK_COUNT: {"kind": "int", "min": "total_tank_count_min", "max": "total_tank_count_max"},
@@ -61,6 +62,7 @@ FILTER_FIELD_META: dict[CatalogFilterField, dict[str, str]] = {
 
 FILTER_PAGE_FIELDS: dict[int, tuple[CatalogFilterField, ...]] = {
     1: (
+        CatalogFilterField.PRICE,
         CatalogFilterField.TOP_TANK_COUNT,
         CatalogFilterField.PREMIUM_TANK_COUNT,
         CatalogFilterField.TOTAL_TANK_COUNT,
@@ -69,8 +71,6 @@ FILTER_PAGE_FIELDS: dict[int, tuple[CatalogFilterField, ...]] = {
         CatalogFilterField.BATTLES_COUNT,
         CatalogFilterField.WINS_COUNT,
         CatalogFilterField.WIN_RATE_PERCENT,
-    ),
-    2: (
         CatalogFilterField.LAST_ACTIVE,
         CatalogFilterField.HAS_TIER_11,
         CatalogFilterField.REGISTERED_AT,
@@ -352,7 +352,7 @@ class CatalogService:
 
             is_favorite = await favorite_repository.exists(
                 user_id=user.id,
-                product_code=_favorite_code(account.id),
+                product_code=_favorite_code(account.supplier_item_id),
             )
             await session.commit()
 
@@ -403,11 +403,11 @@ class CatalogService:
 
             favorite = await favorite_repository.get_by_user_and_code(
                 user_id=user.id,
-                product_code=_favorite_code(account_id),
+                product_code=_favorite_code(account.supplier_item_id),
             )
             is_added = favorite is None
             if favorite is None:
-                await favorite_repository.add(user_id=user.id, product_code=_favorite_code(account_id))
+                await favorite_repository.add(user_id=user.id, product_code=_favorite_code(account.supplier_item_id))
             else:
                 await favorite_repository.remove(favorite)
             await session.commit()
@@ -433,17 +433,28 @@ class CatalogService:
                 prefix=CATALOG_FAVORITE_PREFIX,
             )
 
-            account_ids: list[int] = []
+            favorite_supplier_ids = []
             for favorite in favorites:
-                raw_id = favorite.product_code.removeprefix(CATALOG_FAVORITE_PREFIX)
-                if raw_id.isdigit():
-                    account_ids.append(int(raw_id))
+                raw_supplier_item_id = favorite.product_code.removeprefix(CATALOG_FAVORITE_PREFIX)
+                if raw_supplier_item_id.isdigit():
+                    favorite_supplier_ids.append((favorite, int(raw_supplier_item_id)))
 
+            supplier_item_ids = [supplier_item_id for _, supplier_item_id in favorite_supplier_ids]
+            accounts_by_supplier_id = {
+                account.supplier_item_id: account
+                for account in await account_repository.list_by_supplier_item_ids(supplier_item_ids)
+            }
             accounts = []
-            for account_id in account_ids:
-                account = await account_repository.get_by_id(account_id)
-                if account is not None:
-                    accounts.append(account)
+            missing_favorite_ids: list[int] = []
+            for favorite, supplier_item_id in favorite_supplier_ids:
+                account = accounts_by_supplier_id.get(supplier_item_id)
+                if account is None:
+                    missing_favorite_ids.append(favorite.id)
+                    continue
+                accounts.append(account)
+            removed_count = await favorite_repository.remove_by_ids(missing_favorite_ids)
+            if removed_count:
+                logger.info("Removed %s unavailable catalog favorites user_id=%s", removed_count, user.id)
             await session.commit()
 
         total_count = len(accounts)
@@ -498,11 +509,8 @@ def render_catalog_filter_text(view: CatalogFilterViewSchema) -> str:
     lines = [
         translate(view.language, "catalog_filter_title", game_type=_game_type_label(view.language, view.game_type)),
         "",
-        translate(view.language, "catalog_filter_page_meta", page=view.page, total_pages=view.total_pages),
         translate(view.language, "catalog_filter_active_count", count=view.active_filters_count),
     ]
-
-    lines.extend(("", _render_filter_page_summary(view)))
     return "\n".join(lines)
 
 
@@ -614,32 +622,6 @@ def render_favorites_text(page: FavoritesPageSchema) -> str:
     return "\n".join(lines)
 
 
-def _render_filter_page_summary(view: CatalogFilterViewSchema) -> str:
-    lines = [translate(view.language, "catalog_filter_current_values")]
-    not_set_label = translate(view.language, "catalog_filter_not_set")
-
-    for field in _all_filter_fields(view.game_type):
-        value_label = _filter_value_label(view.language, view.catalog_filter, field)
-        formatted_value = value_label if value_label == not_set_label else f"<b>{value_label}</b>"
-        lines.append(
-            translate(
-                view.language,
-                "catalog_filter_current_value_entry",
-                field=_filter_field_label(view.language, field),
-                value=formatted_value,
-            )
-        )
-    return "\n".join(lines)
-
-
-def _all_filter_fields(game_type: GameAccountType) -> tuple[CatalogFilterField, ...]:
-    return tuple(
-        field
-        for page in range(1, FILTER_PAGES_COUNT + 1)
-        for field in _filter_page_fields(game_type, page)
-    )
-
-
 def _filter_value_label(language: Language, catalog_filter: CatalogFilterSchema, field: CatalogFilterField) -> str:
     meta = FILTER_FIELD_META[field]
     if meta["kind"] in {"int", "decimal"}:
@@ -686,7 +668,7 @@ def get_catalog_filter_value_label(language: Language, catalog_filter: CatalogFi
 
 def _count_active_filters(catalog_filter: CatalogFilterSchema) -> int:
     count = 0
-    visible_fields = {field for page in range(1, FILTER_PAGES_COUNT + 1) for field in _filter_page_fields(catalog_filter.game_type, page)}
+    visible_fields = set(_filter_page_fields(catalog_filter.game_type, 1))
     for field, meta in FILTER_FIELD_META.items():
         if field not in visible_fields:
             continue
@@ -702,6 +684,8 @@ def _count_active_filters(catalog_filter: CatalogFilterSchema) -> int:
 def _to_filter_schema(catalog_filter) -> CatalogFilterSchema:
     return CatalogFilterSchema(
         game_type=GameAccountType(catalog_filter.game_type),
+        sale_price_min=_to_optional_decimal(catalog_filter.sale_price_min),
+        sale_price_max=_to_optional_decimal(catalog_filter.sale_price_max),
         top_tank_count_min=catalog_filter.top_tank_count_min,
         top_tank_count_max=catalog_filter.top_tank_count_max,
         premium_tank_count_min=catalog_filter.premium_tank_count_min,
@@ -959,8 +943,8 @@ def _to_optional_str(value: object) -> str | None:
     return str(value).strip() or None
 
 
-def _favorite_code(account_id: int) -> str:
-    return f"{CATALOG_FAVORITE_PREFIX}{account_id}"
+def _favorite_code(supplier_item_id: int) -> str:
+    return f"{CATALOG_FAVORITE_PREFIX}{supplier_item_id}"
 
 
 def _game_type_label(language: Language, game_type: GameAccountType) -> str:
@@ -975,6 +959,7 @@ def _game_type_label(language: Language, game_type: GameAccountType) -> str:
 
 def _filter_field_label(language: Language, field: CatalogFilterField) -> str:
     key_by_field = {
+        CatalogFilterField.PRICE: "catalog_filter_field_price",
         CatalogFilterField.TOP_TANK_COUNT: "catalog_filter_field_top_tanks",
         CatalogFilterField.PREMIUM_TANK_COUNT: "catalog_filter_field_premium_tanks",
         CatalogFilterField.TOTAL_TANK_COUNT: "catalog_filter_field_total_tanks",

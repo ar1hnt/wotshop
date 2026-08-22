@@ -5,7 +5,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from src.db.models.catalog_account import CatalogSortField, GameAccountType
+from src.db.models.catalog_account import GameAccountType
 from src.i18n import translate
 from src.keyboards.callbacks import (
     AccountRefreshSource,
@@ -20,7 +20,6 @@ from src.keyboards.callbacks import (
     CatalogFilterPageCallback,
     CatalogGameTypeCallback,
     CatalogResultsPageCallback,
-    CatalogSortCallback,
 )
 from src.keyboards.inline import (
     build_catalog_account_detail_markup,
@@ -80,12 +79,12 @@ async def handle_catalog_game_type(
         return
 
     await state.clear()
-    view = await catalog_service.get_filter_view(callback.from_user, game_type=game_type, page=1)
+    results = await catalog_service.get_search_results(callback.from_user, game_type=game_type, page=1)
     await render_screen_message(
         callback.message,
-        text=render_catalog_filter_text(view),
-        reply_markup=build_catalog_filter_markup(view),
-        media=CATALOG_FILTER_SCREEN_MEDIA,
+        text=render_catalog_results_text(results),
+        reply_markup=build_catalog_results_markup(results),
+        media=CATALOG_RESULTS_SCREEN_MEDIA,
         edit=True,
     )
     await callback.answer()
@@ -208,6 +207,18 @@ async def handle_catalog_filter_action(
     await state.clear()
     game_type = GameAccountType(callback_data.game_type)
 
+    if callback_data.action == CatalogFilterAction.OPEN_FILTER:
+        view = await catalog_service.get_filter_view(callback.from_user, game_type=game_type, page=1)
+        await render_screen_message(
+            callback.message,
+            text=render_catalog_filter_text(view),
+            reply_markup=build_catalog_filter_markup(view),
+            media=CATALOG_FILTER_SCREEN_MEDIA,
+            edit=True,
+        )
+        await callback.answer()
+        return
+
     if callback_data.action == CatalogFilterAction.ASK_RESET:
         language = await catalog_service.get_user_language(callback.from_user)
         await render_screen_message(
@@ -244,16 +255,6 @@ async def handle_catalog_filter_action(
         await callback.answer()
         return
 
-    language = await catalog_service.get_user_language(callback.from_user)
-    await render_screen_message(
-        callback.message,
-        text=translate(language, "catalog_search_in_progress"),
-        reply_markup=build_catalog_search_progress_markup(language, game_type, callback_data.page),
-        media=CATALOG_FILTER_SCREEN_MEDIA,
-        edit=True,
-    )
-    await callback.answer()
-
     results = await catalog_service.get_search_results(callback.from_user, game_type=game_type, page=1)
     await render_screen_message(
         callback.message,
@@ -262,6 +263,7 @@ async def handle_catalog_filter_action(
         media=CATALOG_RESULTS_SCREEN_MEDIA,
         edit=True,
     )
+    await callback.answer()
 
 
 @router.callback_query(CatalogClearFieldCallback.filter())
@@ -305,32 +307,6 @@ async def handle_catalog_results_page(
         callback.from_user,
         game_type=GameAccountType(callback_data.game_type),
         page=callback_data.page,
-    )
-    await render_screen_message(
-        callback.message,
-        text=render_catalog_results_text(results),
-        reply_markup=build_catalog_results_markup(results),
-        media=CATALOG_RESULTS_SCREEN_MEDIA,
-        edit=True,
-    )
-    await callback.answer()
-
-
-@router.callback_query(CatalogSortCallback.filter())
-async def handle_catalog_sort(
-    callback: CallbackQuery,
-    callback_data: CatalogSortCallback,
-    state: FSMContext,
-) -> None:
-    if callback.message is None:
-        await callback.answer()
-        return
-
-    await state.clear()
-    results = await catalog_service.toggle_sort(
-        callback.from_user,
-        game_type=GameAccountType(callback_data.game_type),
-        field=CatalogSortField(callback_data.field),
     )
     await render_screen_message(
         callback.message,

@@ -57,6 +57,8 @@ class UserCatalogFilterRepository:
         await self.session.flush()
 
     async def reset(self, catalog_filter: UserCatalogFilter) -> None:
+        catalog_filter.sale_price_min = None
+        catalog_filter.sale_price_max = None
         catalog_filter.top_tank_count_min = None
         catalog_filter.top_tank_count_max = None
         catalog_filter.premium_tank_count_min = None
@@ -84,8 +86,8 @@ class UserCatalogFilterRepository:
         catalog_filter.region = None
         catalog_filter.supplier_loaded_from = None
         catalog_filter.supplier_loaded_to = None
-        catalog_filter.active_sort_field = CatalogSortField.NEWEST.value
-        catalog_filter.price_sort_direction = SortDirection.DESC.value
+        catalog_filter.active_sort_field = CatalogSortField.PRICE.value
+        catalog_filter.price_sort_direction = SortDirection.ASC.value
         catalog_filter.last_activity_sort_direction = SortDirection.ASC.value
         catalog_filter.newest_sort_direction = SortDirection.DESC.value
         await self.session.flush()

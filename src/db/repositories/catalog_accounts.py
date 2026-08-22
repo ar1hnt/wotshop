@@ -72,6 +72,13 @@ class CatalogAccountRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def list_by_supplier_item_ids(self, supplier_item_ids: list[int]) -> list[CatalogAccount]:
+        if not supplier_item_ids:
+            return []
+        query = select(CatalogAccount).where(CatalogAccount.supplier_item_id.in_(supplier_item_ids))
+        result = await self.session.execute(query)
+        return list(result.scalars())
+
     async def list_all(self) -> list[CatalogAccount]:
         query = select(CatalogAccount).order_by(CatalogAccount.id.asc())
         result = await self.session.execute(query)
@@ -135,6 +142,7 @@ class CatalogAccountRepository:
         )
 
         numeric_filters = (
+            (CatalogAccount.sale_price, catalog_filter.sale_price_min, catalog_filter.sale_price_max),
             (CatalogAccount.top_tank_count, catalog_filter.top_tank_count_min, catalog_filter.top_tank_count_max),
             (CatalogAccount.premium_tank_count, catalog_filter.premium_tank_count_min, catalog_filter.premium_tank_count_max),
             (CatalogAccount.total_tank_count, catalog_filter.total_tank_count_min, catalog_filter.total_tank_count_max),
@@ -185,23 +193,8 @@ class CatalogAccountRepository:
 
     @staticmethod
     def _apply_sort(query: Select[tuple[CatalogAccount]], catalog_filter: UserCatalogFilter) -> Select[tuple[CatalogAccount]]:
-        active_sort_field = catalog_filter.active_sort_field
-        if active_sort_field == "price":
-            direction = SortDirection(catalog_filter.price_sort_direction)
-            return query.order_by(
-                CatalogAccount.sale_price.asc() if direction == SortDirection.ASC else CatalogAccount.sale_price.desc(),
-                CatalogAccount.id.desc(),
-            )
-        if active_sort_field == "last_activity":
-            direction = SortDirection(catalog_filter.last_activity_sort_direction)
-            return query.order_by(
-                CatalogAccount.last_active_at.asc() if direction == SortDirection.ASC else CatalogAccount.last_active_at.desc(),
-                CatalogAccount.id.desc(),
-            )
-
-        direction = SortDirection(catalog_filter.newest_sort_direction)
         return query.order_by(
-            CatalogAccount.supplier_loaded_at.asc() if direction == SortDirection.ASC else CatalogAccount.supplier_loaded_at.desc(),
+            CatalogAccount.sale_price.asc(),
             CatalogAccount.id.desc(),
         )
 

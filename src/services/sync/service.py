@@ -361,14 +361,40 @@ class CatalogSyncService:
         return await self.run_full_sync(trigger="scheduled")
 
     async def notify_admins_about_scheduled_sync(self, bot: Bot, report: CatalogSyncReport) -> None:
+        await self._notify_admins_about_scheduled_sync(
+            bot,
+            text=render_catalog_sync_report_text(Language.RU, report),
+            notification_type="completion",
+        )
+
+    async def notify_admins_about_scheduled_sync_failure(
+        self,
+        bot: Bot,
+        *,
+        started_at: datetime,
+        error: Exception,
+    ) -> None:
+        await self._notify_admins_about_scheduled_sync(
+            bot,
+            text=render_catalog_scheduled_sync_failed_text(Language.RU, started_at=started_at, error=error),
+            notification_type="failure",
+        )
+
+    async def _notify_admins_about_scheduled_sync(
+        self,
+        bot: Bot,
+        *,
+        text: str,
+        notification_type: str,
+    ) -> None:
         if not settings.admin_ids:
             logger.warning(
-                "Scheduled catalog sync completed, but no admins configured for completion notification. "
-                "Set ADMIN_IDS in the environment."
+                "Scheduled catalog sync %s, but no admins configured for notification. "
+                "Set ADMIN_IDS in the environment.",
+                notification_type,
             )
             return
 
-        text = render_catalog_sync_report_text(Language.RU, report)
         for admin_id in settings.admin_ids:
             try:
                 await bot.send_message(
@@ -377,12 +403,14 @@ class CatalogSyncService:
                 )
             except TelegramAPIError:
                 logger.exception(
-                    "Failed to notify admin telegram_id=%s about scheduled catalog sync completion",
+                    "Failed to notify admin telegram_id=%s about scheduled catalog sync %s",
                     admin_id,
+                    notification_type,
                 )
             else:
                 logger.info(
-                    "Scheduled catalog sync completion notification sent to admin telegram_id=%s",
+                    "Scheduled catalog sync %s notification sent to admin telegram_id=%s",
+                    notification_type,
                     admin_id,
                 )
 
@@ -404,6 +432,8 @@ class CatalogSyncService:
                     GameAccountType.WOT_BLITZ: 0,
                 }
                 skipped_count = 0
+                duplicate_supplier_ids_count = 0
+                seen_supplier_item_ids: set[int] = set()
 
                 for source in LZT_CATALOG_SOURCES:
                     logger.info(
@@ -433,10 +463,15 @@ class CatalogSyncService:
                             if game_type != source.game_type:
                                 skipped_count += 1
                                 continue
+                            supplier_item_id = int(normalized["supplier_item_id"])
+                            if supplier_item_id in seen_supplier_item_ids:
+                                duplicate_supplier_ids_count += 1
+                                continue
                             if loaded_by_game_type[game_type] >= LZT_CATEGORY_LIMIT_PER_GAME:
                                 continue
 
                             parsed_rows.append(normalized)
+                            seen_supplier_item_ids.add(supplier_item_id)
                             loaded_by_game_type[game_type] += 1
                             accepted_on_page += 1
 
@@ -494,10 +529,11 @@ class CatalogSyncService:
                     wot_blitz_count=loaded_by_game_type[GameAccountType.WOT_BLITZ],
                 )
                 logger.info(
-                    "Catalog sync completed trigger=%s total=%s skipped=%s",
+                    "Catalog sync completed trigger=%s total=%s skipped=%s duplicate_supplier_ids=%s",
                     report.trigger,
                     report.total_loaded,
                     report.skipped_count,
+                    duplicate_supplier_ids_count,
                 )
                 return report
             finally:
@@ -746,14 +782,20 @@ class CatalogSyncScheduler:
             delay = _seconds_until_next_moscow_one_am()
             logger.info("Next catalog sync is scheduled in %.2f seconds.", delay)
             await asyncio.sleep(delay)
+            started_at = datetime.now(UTC)
             try:
                 report = await self._sync_service.run_scheduled_sync()
                 if report is not None:
                     await self._sync_service.notify_admins_about_scheduled_sync(self._bot, report)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as error:
                 logger.exception("Scheduled catalog sync failed.")
+                await self._sync_service.notify_admins_about_scheduled_sync_failure(
+                    self._bot,
+                    started_at=started_at,
+                    error=error,
+                )
 
 
 def render_catalog_sync_started_text(language: Language) -> str:
@@ -790,6 +832,25 @@ def _format_moscow_datetime(value: datetime) -> str:
 
 def render_catalog_sync_failed_text(language: Language, error: Exception) -> str:
     return translate(language, "admin_force_refresh_failed", reason=escape(str(error)))
+
+
+def render_catalog_scheduled_sync_failed_text(
+    language: Language,
+    *,
+    started_at: datetime,
+    error: Exception,
+) -> str:
+    reason = escape(str(error)[:1000])
+    return "\n".join(
+        (
+            translate(language, "admin_scheduled_sync_failed_title"),
+            "",
+            translate(language, "admin_force_refresh_started_at", value=_format_moscow_datetime(started_at)),
+            translate(language, "admin_force_refresh_finished_at", value=_format_moscow_datetime(datetime.now(UTC))),
+            "",
+            translate(language, "admin_scheduled_sync_failed_reason", reason=reason),
+        )
+    )
 
 
 def render_pricing_formula_text(language: Language) -> str:

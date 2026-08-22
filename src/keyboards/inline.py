@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from src.db.models.catalog_account import CatalogSortField, GameAccountType, SortDirection
+from src.db.models.catalog_account import GameAccountType
 from src.db.models.review import ReviewRating, ReviewStatus
 from src.db.models.transaction import TransactionStatus
 from src.i18n import Language, translate
@@ -60,7 +60,6 @@ from src.keyboards.callbacks import (
     CatalogFilterPageCallback,
     CatalogGameTypeCallback,
     CatalogResultsPageCallback,
-    CatalogSortCallback,
     FavoritesAccountAction,
     FavoritesAccountActionCallback,
     FavoritesAccountDetailCallback,
@@ -95,7 +94,7 @@ from src.schemas.faq import FaqDetailSchema, FaqListViewSchema
 from src.schemas.favorites import FavoritesPageSchema
 from src.schemas.common.menu import Screen, render_menu_view
 from src.schemas.reviews import ReviewRegistryPageSchema
-from src.services.catalog import build_catalog_account_button_text
+from src.services.catalog import build_catalog_account_button_text, get_catalog_filter_value_label
 from src.services.reviews import build_admin_review_button_text
 from src.services.transactions import build_admin_transaction_button_text
 
@@ -362,53 +361,19 @@ def build_catalog_filter_markup(view: CatalogFilterViewSchema) -> InlineKeyboard
     fields = _catalog_fields_for_page(view.game_type, view.page)
     inline_keyboard: list[list[InlineKeyboardButton]] = []
 
-    inline_keyboard.append(
-        [
-            InlineKeyboardButton(
-                text=translate(view.language, "catalog_button_search"),
-                callback_data=CatalogFilterActionCallback(
-                    action=CatalogFilterAction.SEARCH,
-                    game_type=view.game_type.value, # type: ignore
-                    page=view.page,
-                ).pack(),
-                style="primary",
-            )
-        ]
-    )
-
-    for index in range(0, len(fields), 2):
-        row = fields[index:index + 2]
+    for field in fields:
         inline_keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=_catalog_filter_button_label(view.language, field),
+                    text=_catalog_filter_button_text(view, field),
                     callback_data=CatalogFilterFieldCallback(
                         game_type=view.game_type.value, # type: ignore
                         page=view.page,
                         field=field.value, # type: ignore
                     ).pack(),
-                )
-                for field in row
+                ),
             ]
         )
-
-    pagination_row: list[InlineKeyboardButton] = []
-    if view.page > 1:
-        pagination_row.append(
-            InlineKeyboardButton(
-                text=translate(view.language, "pagination_previous"),
-                callback_data=CatalogFilterPageCallback(game_type=view.game_type.value, page=view.page - 1).pack(), # type: ignore
-            )
-        )
-    if view.page < view.total_pages:
-        pagination_row.append(
-            InlineKeyboardButton(
-                text=translate(view.language, "pagination_next"),
-                callback_data=CatalogFilterPageCallback(game_type=view.game_type.value, page=view.page + 1).pack(), # type: ignore
-            )
-        )
-    if pagination_row:
-        inline_keyboard.append(pagination_row)
 
     inline_keyboard.append(
         [
@@ -425,9 +390,13 @@ def build_catalog_filter_markup(view: CatalogFilterViewSchema) -> InlineKeyboard
 
     inline_keyboard.append(
         [
-            InlineKeyboardButton(
-                text=translate(view.language, "back"),
-                callback_data=NavigationCallback(screen=Screen.BUY.value).pack(), # type: ignore
+                InlineKeyboardButton(
+                    text=translate(view.language, "back"),
+                    callback_data=CatalogFilterActionCallback(
+                        action=CatalogFilterAction.SEARCH,
+                        game_type=view.game_type.value, # type: ignore
+                        page=1,
+                    ).pack(),
             ),
         ]
     )
@@ -452,7 +421,11 @@ def build_catalog_search_progress_markup(
             [
                 InlineKeyboardButton(
                     text=translate(language, "back"),
-                    callback_data=CatalogFilterPageCallback(game_type=game_type.value, page=page).pack(), # type: ignore
+                    callback_data=CatalogFilterActionCallback(
+                        action=CatalogFilterAction.OPEN_FILTER,
+                        game_type=game_type.value, # type: ignore
+                        page=1,
+                    ).pack(),
                 ),
             ],
             [
@@ -493,7 +466,11 @@ def build_catalog_filter_input_back_markup(
             [
                 InlineKeyboardButton(
                     text=translate(language, "back"),
-                    callback_data=CatalogFilterPageCallback(game_type=game_type.value, page=page).pack(), # type: ignore
+                    callback_data=CatalogFilterActionCallback(
+                        action=CatalogFilterAction.OPEN_FILTER,
+                        game_type=game_type.value, # type: ignore
+                        page=1,
+                    ).pack(),
                 ),
             ],
             [
@@ -560,7 +537,11 @@ def build_catalog_boolean_markup(
             [
                 InlineKeyboardButton(
                     text=translate(language, "back"),
-                    callback_data=CatalogFilterPageCallback(game_type=game_type.value, page=page).pack(), # type: ignore
+                    callback_data=CatalogFilterActionCallback(
+                        action=CatalogFilterAction.OPEN_FILTER,
+                        game_type=game_type.value, # type: ignore
+                        page=1,
+                    ).pack(),
                 ),
             ],
             [
@@ -574,36 +555,7 @@ def build_catalog_boolean_markup(
 
 
 def build_catalog_results_markup(results: CatalogResultsPageSchema) -> InlineKeyboardMarkup:
-    inline_keyboard: list[list[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(
-                text=_catalog_sort_button_text(
-                    results.language,
-                    CatalogSortField.LAST_ACTIVITY,
-                    results.last_activity_sort_direction,
-                ),
-                callback_data=CatalogSortCallback(game_type=results.game_type.value, field=CatalogSortField.LAST_ACTIVITY.value).pack(), # type: ignore
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text=_catalog_sort_button_text(
-                    results.language,
-                    CatalogSortField.PRICE,
-                    results.price_sort_direction,
-                ),
-                callback_data=CatalogSortCallback(game_type=results.game_type.value, field=CatalogSortField.PRICE.value).pack(), # type: ignore
-            ),
-            InlineKeyboardButton(
-                text=_catalog_sort_button_text(
-                    results.language,
-                    CatalogSortField.NEWEST,
-                    results.newest_sort_direction,
-                ),
-                callback_data=CatalogSortCallback(game_type=results.game_type.value, field=CatalogSortField.NEWEST.value).pack(), # type: ignore
-            ),
-        ],
-    ]
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
 
     for item in results.items:
         inline_keyboard.append(
@@ -641,8 +593,21 @@ def build_catalog_results_markup(results: CatalogResultsPageSchema) -> InlineKey
     inline_keyboard.append(
         [
             InlineKeyboardButton(
-                text=translate(results.language, "back"),
-                callback_data=CatalogFilterPageCallback(game_type=results.game_type.value, page=1).pack(), # type: ignore
+                text=translate(results.language, "catalog_button_open_filter"),
+                callback_data=CatalogFilterActionCallback(
+                    action=CatalogFilterAction.OPEN_FILTER,
+                    game_type=results.game_type.value, # type: ignore
+                    page=1,
+                ).pack(),
+            ),
+        ]
+    )
+
+    inline_keyboard.append(
+        [
+                InlineKeyboardButton(
+                    text=translate(results.language, "back"),
+                    callback_data=NavigationCallback(screen=Screen.BUY.value).pack(), # type: ignore
             ),
         ]
     )
@@ -826,7 +791,11 @@ def build_catalog_reset_confirmation_markup(language: Language, game_type: GameA
             [
                 InlineKeyboardButton(
                     text=translate(language, "back"),
-                    callback_data=CatalogFilterPageCallback(game_type=game_type.value, page=page).pack(), # type: ignore
+                    callback_data=CatalogFilterActionCallback(
+                        action=CatalogFilterAction.OPEN_FILTER,
+                        game_type=game_type.value, # type: ignore
+                        page=1,
+                    ).pack(),
                 ),
             ],
             [
@@ -2341,8 +2310,8 @@ def _language_button_label(current_language: Language, target_language: Language
 
 
 def _catalog_fields_for_page(game_type: GameAccountType, page: int) -> tuple[CatalogFilterField, ...]:
-    field_map = {
-        1: (
+    fields = (
+            CatalogFilterField.PRICE,
             CatalogFilterField.TOP_TANK_COUNT,
             CatalogFilterField.PREMIUM_TANK_COUNT,
             CatalogFilterField.TOTAL_TANK_COUNT,
@@ -2351,8 +2320,6 @@ def _catalog_fields_for_page(game_type: GameAccountType, page: int) -> tuple[Cat
             CatalogFilterField.BATTLES_COUNT,
             CatalogFilterField.WINS_COUNT,
             CatalogFilterField.WIN_RATE_PERCENT,
-        ),
-        2: (
             CatalogFilterField.LAST_ACTIVE,
             CatalogFilterField.HAS_TIER_11,
             CatalogFilterField.REGISTERED_AT,
@@ -2361,9 +2328,7 @@ def _catalog_fields_for_page(game_type: GameAccountType, page: int) -> tuple[Cat
             CatalogFilterField.TANK_QUERY,
             CatalogFilterField.REGION,
             CatalogFilterField.SUPPLIER_LOADED_AT,
-        ),
-    }
-    fields = field_map[page]
+    )
     if game_type in {GameAccountType.MIR_TANKOV, GameAccountType.TANKS_BLITZ}:
         return tuple(field for field in fields if field != CatalogFilterField.REGION)
     return fields
@@ -2371,6 +2336,7 @@ def _catalog_fields_for_page(game_type: GameAccountType, page: int) -> tuple[Cat
 
 def _catalog_filter_button_label(language: Language, field: CatalogFilterField) -> str:
     key_map = {
+        CatalogFilterField.PRICE: "catalog_filter_field_price",
         CatalogFilterField.TOP_TANK_COUNT: "catalog_filter_field_top_tanks",
         CatalogFilterField.PREMIUM_TANK_COUNT: "catalog_filter_field_premium_tanks",
         CatalogFilterField.TOTAL_TANK_COUNT: "catalog_filter_field_total_tanks",
@@ -2391,18 +2357,29 @@ def _catalog_filter_button_label(language: Language, field: CatalogFilterField) 
     return translate(language, key_map[field])
 
 
-def _catalog_sort_button_text(
-    language: Language,
-    button_field: CatalogSortField,
-    current_direction: SortDirection,
-) -> str:
-    key_map = {
-        CatalogSortField.PRICE: "catalog_sort_price",
-        CatalogSortField.LAST_ACTIVITY: "catalog_sort_last_activity",
-        CatalogSortField.NEWEST: "catalog_sort_newest",
+def _catalog_filter_button_text(view: CatalogFilterViewSchema, field: CatalogFilterField) -> str:
+    emoji_by_field = {
+        CatalogFilterField.PRICE: "💰",
+        CatalogFilterField.TOP_TANK_COUNT: "🎖",
+        CatalogFilterField.PREMIUM_TANK_COUNT: "⭐",
+        CatalogFilterField.TOTAL_TANK_COUNT: "🛡",
+        CatalogFilterField.SILVER_AMOUNT: "🥈",
+        CatalogFilterField.GOLD_AMOUNT: "🪙",
+        CatalogFilterField.BATTLES_COUNT: "⚔️",
+        CatalogFilterField.WINS_COUNT: "🏆",
+        CatalogFilterField.WIN_RATE_PERCENT: "📈",
+        CatalogFilterField.LAST_ACTIVE: "🕒",
+        CatalogFilterField.HAS_TIER_11: "🔝",
+        CatalogFilterField.REGISTERED_AT: "📅",
+        CatalogFilterField.IS_PHONE_BOUND: "📱",
+        CatalogFilterField.IS_IN_CLAN: "🛡️",
+        CatalogFilterField.TANK_QUERY: "🔎",
+        CatalogFilterField.REGION: "🌍",
+        CatalogFilterField.SUPPLIER_LOADED_AT: "🆕",
     }
-    arrow = "⬆️" if current_direction == SortDirection.ASC else "⬇️"
-    return f"{translate(language, key_map[button_field])} {arrow}"
+    label = _catalog_filter_button_label(view.language, field)
+    value = get_catalog_filter_value_label(view.language, view.catalog_filter, field)
+    return _truncate_button_text(f"{emoji_by_field[field]} {label}: {value}", limit=64)
 
 
 def _truncate_button_text(value: str, limit: int = 60) -> str:
