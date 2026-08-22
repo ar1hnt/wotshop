@@ -5,7 +5,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from src.db.models.catalog_account import GameAccountType
+from src.db.models.catalog_account import CatalogSortField, GameAccountType
 from src.i18n import translate
 from src.keyboards.callbacks import (
     AccountRefreshSource,
@@ -20,6 +20,7 @@ from src.keyboards.callbacks import (
     CatalogFilterPageCallback,
     CatalogGameTypeCallback,
     CatalogResultsPageCallback,
+    CatalogSortCallback,
 )
 from src.keyboards.inline import (
     build_catalog_account_detail_markup,
@@ -307,6 +308,32 @@ async def handle_catalog_results_page(
         callback.from_user,
         game_type=GameAccountType(callback_data.game_type),
         page=callback_data.page,
+    )
+    await render_screen_message(
+        callback.message,
+        text=render_catalog_results_text(results),
+        reply_markup=build_catalog_results_markup(results),
+        media=CATALOG_RESULTS_SCREEN_MEDIA,
+        edit=True,
+    )
+    await callback.answer()
+
+
+@router.callback_query(CatalogSortCallback.filter())
+async def handle_catalog_sort(
+    callback: CallbackQuery,
+    callback_data: CatalogSortCallback,
+    state: FSMContext,
+) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    await state.clear()
+    results = await catalog_service.toggle_sort(
+        callback.from_user,
+        game_type=GameAccountType(callback_data.game_type),
+        field=CatalogSortField(callback_data.field),
     )
     await render_screen_message(
         callback.message,

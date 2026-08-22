@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from src.db.models.catalog_account import GameAccountType
+from src.db.models.catalog_account import CatalogSortField, GameAccountType, SortDirection
 from src.db.models.review import ReviewRating, ReviewStatus
 from src.db.models.transaction import TransactionStatus
 from src.i18n import Language, translate
@@ -60,6 +60,7 @@ from src.keyboards.callbacks import (
     CatalogFilterPageCallback,
     CatalogGameTypeCallback,
     CatalogResultsPageCallback,
+    CatalogSortCallback,
     FavoritesAccountAction,
     FavoritesAccountActionCallback,
     FavoritesAccountDetailCallback,
@@ -557,6 +558,29 @@ def build_catalog_boolean_markup(
 def build_catalog_results_markup(results: CatalogResultsPageSchema) -> InlineKeyboardMarkup:
     inline_keyboard: list[list[InlineKeyboardButton]] = []
 
+    sort_directions = {
+        CatalogSortField.PRICE: results.price_sort_direction,
+        CatalogSortField.LAST_ACTIVITY: results.last_activity_sort_direction,
+        CatalogSortField.NEWEST: results.newest_sort_direction,
+    }
+
+    def sort_button(field: CatalogSortField) -> InlineKeyboardButton:
+        direction = sort_directions[field]
+        arrow = "⬆️" if direction == SortDirection.ASC else "⬇️"
+        return InlineKeyboardButton(
+            text=f"{translate(results.language, _catalog_sort_translation_key(field))} {arrow}",
+            callback_data=CatalogSortCallback(
+                game_type=results.game_type.value,  # type: ignore
+                field=field.value,
+            ).pack(),
+        )
+
+    inline_keyboard.append([sort_button(CatalogSortField.LAST_ACTIVITY)])
+    inline_keyboard.append([
+        sort_button(CatalogSortField.PRICE),
+        sort_button(CatalogSortField.NEWEST),
+    ])
+
     for item in results.items:
         inline_keyboard.append(
             [
@@ -620,6 +644,14 @@ def build_catalog_results_markup(results: CatalogResultsPageSchema) -> InlineKey
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def _catalog_sort_translation_key(field: CatalogSortField) -> str:
+    return {
+        CatalogSortField.PRICE: "catalog_sort_price",
+        CatalogSortField.LAST_ACTIVITY: "catalog_sort_last_activity",
+        CatalogSortField.NEWEST: "catalog_sort_newest",
+    }[field]
 
 
 def build_catalog_account_detail_markup(detail: CatalogAccountDetailSchema, *, page: int) -> InlineKeyboardMarkup:
