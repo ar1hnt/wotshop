@@ -4,7 +4,13 @@ from decimal import Decimal
 from sqlalchemy import Select, Text, and_, cast, delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models.catalog_account import CatalogAccount, CatalogAccountStatus, GameAccountType, SortDirection
+from src.db.models.catalog_account import (
+    CatalogAccount,
+    CatalogAccountStatus,
+    CatalogSortField,
+    GameAccountType,
+    SortDirection,
+)
 from src.db.models.user_catalog_filter import UserCatalogFilter
 
 
@@ -310,8 +316,26 @@ class CatalogAccountRepository:
 
     @staticmethod
     def _apply_sort(query: Select[tuple[CatalogAccount]], catalog_filter: UserCatalogFilter) -> Select[tuple[CatalogAccount]]:
+        sort_columns = {
+            CatalogSortField.PRICE: CatalogAccount.sale_price,
+            CatalogSortField.LAST_ACTIVITY: CatalogAccount.last_active_at,
+            CatalogSortField.NEWEST: CatalogAccount.supplier_loaded_at,
+        }
+        direction_fields = {
+            CatalogSortField.PRICE: "price_sort_direction",
+            CatalogSortField.LAST_ACTIVITY: "last_activity_sort_direction",
+            CatalogSortField.NEWEST: "newest_sort_direction",
+        }
+        sort_field = CatalogSortField(catalog_filter.active_sort_field)
+        direction = SortDirection(getattr(catalog_filter, direction_fields[sort_field]))
+        sort_column = sort_columns[sort_field]
+        sort_expression = sort_column.asc() if direction == SortDirection.ASC else sort_column.desc()
+
+        if sort_field in {CatalogSortField.LAST_ACTIVITY, CatalogSortField.NEWEST}:
+            sort_expression = sort_expression.nulls_last()
+
         return query.order_by(
-            CatalogAccount.sale_price.asc(),
+            sort_expression,
             CatalogAccount.id.desc(),
         )
 
