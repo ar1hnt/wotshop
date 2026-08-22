@@ -41,6 +41,7 @@ class CatalogFilterFieldCallback(CallbackData, prefix="catalog_filter_field"):
 
 
 class CatalogFilterAction(StrEnum):
+    OPEN_FILTER = "open_filter"
     SEARCH = "search"
     ASK_RESET = "ask_reset"
     CONFIRM_RESET = "confirm_reset"
