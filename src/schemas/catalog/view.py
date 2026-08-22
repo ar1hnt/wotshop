@@ -98,6 +98,8 @@ class CatalogAccountSummarySchema(BaseModel):
     id: int
     game_type: GameAccountType
     sale_price: Decimal
+    top_tank_count: int
+    premium_tank_count: int
     top_tanks_preview: tuple[str, ...]
     last_active_at: datetime | None
     supplier_loaded_at: datetime | None

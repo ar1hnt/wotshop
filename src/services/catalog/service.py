@@ -1,4 +1,5 @@
 import logging
+import json
 
 from datetime import UTC, datetime, time
 from decimal import Decimal
@@ -39,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 CATALOG_FAVORITE_PREFIX = "catalog_supplier:"
 CATALOG_INACTIVITY_MARK_DAYS = 60
+UNIQUE_TOP_NAMES = frozenset(
+    json.loads(settings.unique_tops_path.read_text(encoding="utf-8")).get("unique_tops_tanks_wot", {})
+)
 
 FILTER_FIELD_META: dict[CatalogFilterField, dict[str, str]] = {
     CatalogFilterField.PRICE: {"kind": "decimal", "min": "sale_price_min", "max": "sale_price_max"},
@@ -583,14 +587,21 @@ def render_catalog_detail_text(detail: CatalogAccountDetailSchema) -> str:
 
 
 def build_catalog_account_button_text(item: CatalogAccountSummarySchema) -> str:
-    preview = ", ".join(item.top_tanks_preview) if item.top_tanks_preview else "..."
     prefixes: list[str] = []
     if _is_new_today(item.supplier_loaded_at):
-        prefixes.append("🆕 NEW")
+        prefixes.append("🆕")
     if _has_long_inactivity(item.last_active_at):
         prefixes.append("🕸")
-    prefix = f"{' | '.join(prefixes)} | " if prefixes else ""
-    return f"{prefix}{_format_money(item.sale_price)} RUB | {preview}"
+    prefix = f"{' • '.join(prefixes)} • " if prefixes else ""
+    parts = [
+        f"{_format_money(item.sale_price)} ₽",
+        f"🎖 Топы: {item.top_tank_count}",
+        f"⭐ Премы: {item.premium_tank_count}",
+    ]
+    unique_tank_name = next((name for name in item.top_tanks_preview if name in UNIQUE_TOP_NAMES), None)
+    if unique_tank_name is not None:
+        parts.append(f"🔥 {unique_tank_name}")
+    return f"{prefix}{' • '.join(parts)}"
 
 
 def render_catalog_favorite_alert(language: Language, *, added: bool) -> str:
@@ -725,6 +736,8 @@ def _to_summary_schema(account) -> CatalogAccountSummarySchema:
         id=account.id,
         game_type=GameAccountType(account.game_type),
         sale_price=_to_decimal(account.sale_price),
+        top_tank_count=account.top_tank_count,
+        premium_tank_count=account.premium_tank_count,
         top_tanks_preview=tuple(_extract_top_tanks_preview(account.tanks_payload, account.tanks_text)),
         last_active_at=account.last_active_at,
         supplier_loaded_at=account.supplier_loaded_at,
@@ -758,6 +771,8 @@ def _build_catalog_detail_pages(detail: CatalogAccountDetailSchema) -> tuple[str
         ),
         "",
         translate(detail.language, "catalog_detail_registered_at", value=_format_datetime(detail.registered_at)),
+        "",
+        translate(detail.language, "catalog_detail_tanks_next_page"),
         ""
     ]
     first_page = "\n".join(blocks) or "-"
