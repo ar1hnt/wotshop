@@ -8,6 +8,105 @@ from src.db.models.catalog_account import CatalogAccount, CatalogAccountStatus, 
 from src.db.models.user_catalog_filter import UserCatalogFilter
 
 
+# Common player names are mapped to the canonical spelling found in the LZT
+# tank payload. The raw query is still searched too, so any tank not listed
+# here retains partial-name search support.
+TANK_SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "WT E 100": (
+        "вафля", "ваф", "ваффля", "ваффентрагер", "ваффентраггер", "waffle",
+        "waffentrager", "waffenträger", "waffentrager e 100", "waffenträger e 100",
+        "wte100", "wt e100", "wt-e-100",
+    ),
+    "Оруженосец": ("оруженосец", "оруж", "wt e 100 оруженосец"),
+    "T95/FV4201": (
+        "чиф", "чифтейн", "чифтен", "chieftain", "chieftan", "chief", "t95fv4201", "fv4201",
+    ),
+    "Gendarme": ("жандарм", "жандар", "gendarme", "gendarm"),
+    "Об. 279 (р)": (
+        "279р", "279 р", "об279р", "об 279р", "об279 ранний", "279ранний", "object279e", "obj279e",
+    ),
+    "Об. 279": ("об279", "об 279", "object279", "obj279"),
+    "Об. 780": ("780", "об780", "об 780", "object780", "obj780"),
+    "BZT-70": ("bzt70", "bzt 70", "бзт70", "бзт 70"),
+    "MBT-B": ("mbtb", "mbt b", "мбтб", "мбт б"),
+    "116-F3": ("116f3", "116 f3", "116-ф3", "116 ф3"),
+    "VK 72.01 K": ("vk7201", "vk 7201", "вк7201", "вк 72"),
+    "XM57": ("xm57", "xm 57", "хм57", "хм 57"),
+    "FV215b (183)": ("бабаха", "бабах", "fv183", "fv 183", "fv215b183", "фв183"),
+    "Об. 260": ("об260", "об 260", "object260", "obj260"),
+    "Об. 907": ("об907", "об 907", "object907", "obj907"),
+    "T-22 ср.": ("т22", "т 22", "t22", "t 22"),
+    "M60": ("м60", "m 60"),
+    "Kpz. 07 P(E)": ("kpz07", "kpz 07", "кпз07", "кпз 07"),
+    "IS-7": ("ис7", "ис 7", "is7", "is 7", "иссемь", "семерка"),
+    "Об. 277": ("об277", "об 277", "obj277", "object277", "объект277"),
+    "Об. 140": ("об140", "об 140", "obj140", "object140"),
+    "Об. 430У": ("об430у", "об 430у", "obj430u", "object430u", "430у", "430u"),
+    "Об. 268/4": ("об2684", "об 268 4", "obj2684", "object2684", "птшка", "птшк"),
+    "E 100": ("е100", "е 100", "e100", "e 100", "сотка"),
+    "Maus": ("маус", "мышь", "mouse"),
+    "Super Conqueror": ("суперконь", "супер конь", "sconq", "s conq", "суперконкерор"),
+    "60TP Lewandowskiego": ("60тп", "60 тп", "60tp", "60 tp", "шестидесятка"),
+    "Grille 15": ("гриль", "grille15", "grille 15"),
+    "Leopard 1": ("лео", "леопард", "leopard1", "leopard 1"),
+    "Bat.-Châtillon 25 t": (
+        "батчат", "бат чат", "bat chat", "batchat", "batchat25t", "bat chat 25t",
+    ),
+    "AMX 50 Foch B": ("фоч", "фош", "fochb", "foch b"),
+    "Strv 103B": ("стрв", "strv103b", "strv 103b"),
+    "UDES 15/16": ("удес", "udes1516", "udes 15 16"),
+    "EBR 105": ("ебр", "ebr105", "ebr 105"),
+    "Т-100 ЛТ": ("т100лт", "т100 лт", "t100lt", "t 100 lt", "сотый лт"),
+    "Sheridan": ("шарик", "sheridan"),
+    "Manticore": ("мантикора", "мантикор", "manticore"),
+    "Progetto 65": ("проект", "progetto65", "progetto 65"),
+    "TVP T 50/51": ("твп", "tvp", "tvpt5051", "tvp t 50 51"),
+    "Kranvagn": ("кран", "kranvagn"),
+    "Minotauro": ("минотавр", "minotauro"),
+    "Rinoceronte": ("рино", "rinoceronte"),
+    "Ho-Ri 3": ("хори", "hori3", "ho ri 3"),
+    "FV4005": ("fv4005", "fv 4005", "фв4005", "фв 4005", "бабаха4005"),
+    "FV217 Badger": ("баджер", "badger", "fv217", "fv 217"),
+    "T110E3": ("т110е3", "т110 е3", "t110e3", "t110 e3"),
+    "T110E4": ("т110е4", "т110 е4", "t110e4", "t110 e4"),
+    "T57 Heavy": ("т57", "т 57", "t57", "t 57", "т57 хэви"),
+    "WZ-111 5A": ("5а", "5a", "wz1115a", "wz 111 5a", "китайский277"),
+    "Concept 1B": ("концепт", "concept1b", "concept 1b"),
+    "AE Phase I": ("ае", "аешка", "ae phase", "ae phase i"),
+    "Cobra": ("кобра", "cobra"),
+    "Char Futur 4": ("чар", "char futur", "char futur 4"),
+    "Skoda T 56": ("шкода", "skodat56", "skoda t56", "skoda t 56"),
+    "BZ-176": ("бз176", "бз 176", "bz176", "bz 176"),
+    "Bourrasque": ("бурасик", "bourrasque"),
+    "ELC EVEN 90": ("елка", "ёлка", "elc90", "elc even 90"),
+    "LT-432": ("лт432", "лт 432", "lt432", "lt 432"),
+    "Об. 252У": ("об252у", "об 252у", "obj252u", "object252u", "defender", "дефендер"),
+    "ИС-3А": ("ис3а", "ис 3а", "is3a", "is 3a"),
+    "Cromwell B": ("кромб", "кромвель б", "crom b", "cromwell b"),
+}
+
+
+def _normalize_tank_search_value(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _tank_search_terms(raw_query: str) -> tuple[str, ...]:
+    normalized_query = _normalize_tank_search_value(raw_query)
+    if not normalized_query:
+        return ()
+
+    terms = {normalized_query}
+    for canonical_name, aliases in TANK_SEARCH_SYNONYMS.items():
+        normalized_aliases = tuple(_normalize_tank_search_value(alias) for alias in (*aliases, canonical_name))
+        if any(
+            normalized_query == alias
+            or (len(normalized_query) >= 3 and alias.startswith(normalized_query))
+            for alias in normalized_aliases
+        ):
+            terms.add(_normalize_tank_search_value(canonical_name))
+    return tuple(sorted(terms))
+
+
 class CatalogAccountRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -181,13 +280,31 @@ class CatalogAccountRepository:
         }:
             query = query.where(CatalogAccount.region.ilike(f"%{catalog_filter.region}%"))
         if catalog_filter.tank_query:
-            search_pattern = f"%{catalog_filter.tank_query.strip()}%"
-            query = query.where(
-                or_(
-                    cast(CatalogAccount.tanks_payload, Text).ilike(search_pattern),
-                    CatalogAccount.tanks_text.ilike(search_pattern),
+            terms = _tank_search_terms(catalog_filter.tank_query)
+            if terms:
+                normalized_tanks_payload = func.regexp_replace(
+                    func.lower(cast(CatalogAccount.tanks_payload, Text)),
+                    "[^[:alnum:]]",
+                    "",
+                    "g",
                 )
-            )
+                normalized_tanks_text = func.regexp_replace(
+                    func.lower(CatalogAccount.tanks_text),
+                    "[^[:alnum:]]",
+                    "",
+                    "g",
+                )
+                query = query.where(
+                    or_(
+                        *(
+                            or_(
+                                normalized_tanks_payload.contains(term),
+                                normalized_tanks_text.contains(term),
+                            )
+                            for term in terms
+                        )
+                    )
+                )
 
         return query
 
