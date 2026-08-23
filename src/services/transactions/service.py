@@ -66,6 +66,8 @@ class TransactionService:
                         account_id=transaction.catalog_account_id or 0,
                         supplier_item_id=account.supplier_item_id if account is not None else None,
                         game_type=account.game_type if account is not None else None,
+                        sale_price=account.sale_price if account is not None else None,
+                        supplier_price=account.supplier_price if account is not None else None,
                         operation="purchase",
                         error=error,
                     ),
@@ -89,6 +91,8 @@ class TransactionService:
             account = await accounts.get_by_id(account_id)
             supplier_item_id = account.supplier_item_id if account is not None else None
             game_type = account.game_type if account is not None else None
+            sale_price = account.sale_price if account is not None else None
+            supplier_price = account.supplier_price if account is not None else None
             bot_user_id = user.id
             user_telegram_id = user.telegram_id
             username = _normalize_username(user.username)
@@ -110,6 +114,8 @@ class TransactionService:
                         account_id=account_id,
                         supplier_item_id=supplier_item_id,
                         game_type=game_type,
+                        sale_price=sale_price,
+                        supplier_price=supplier_price,
                         operation=operation,
                         error=error,
                     ),
@@ -448,6 +454,8 @@ def render_admin_account_operation_error_text(
     account_id: int,
     supplier_item_id: int | None,
     game_type: str | None,
+    sale_price: Decimal | None,
+    supplier_price: Decimal | None,
     operation: str,
     error: Exception,
 ) -> str:
@@ -473,6 +481,10 @@ def render_admin_account_operation_error_text(
                 value=_game_type_label(language, game_type),
             )
         )
+    if sale_price is not None:
+        lines.append(translate(language, "admin_product_sale_price", value=_format_money(_to_decimal(sale_price))))
+    if supplier_price is not None:
+        lines.append(translate(language, "admin_product_supplier_price", value=_format_money(_to_decimal(supplier_price))))
     lines.extend(
         (
             "",
