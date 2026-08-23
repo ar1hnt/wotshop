@@ -40,11 +40,15 @@ from src.services.users import (
     render_broadcast_confirmation_text,
     render_broadcast_prompt_text,
     render_broadcast_result_text,
+    render_direct_broadcast_confirmation_text,
+    render_direct_broadcast_lookup_text,
+    render_direct_broadcast_prompt_text,
+    render_direct_broadcast_result_text,
     render_user_detail_text,
     render_user_lookup_prompt_text,
     render_user_lookup_type_text,
 )
-from src.states.admin_users import AdminBroadcastState, AdminUserLookupState
+from src.states.admin_users import AdminBroadcastState, AdminDirectBroadcastState, AdminUserLookupState
 
 router = Router(name="admin-users")
 router.message.filter(IsAdminFilter())
@@ -99,6 +103,18 @@ async def handle_admin_users_menu(
         await state.update_data(
             anchor_chat_id=sent_message.chat.id,
             anchor_message_id=sent_message.message_id,
+        )
+        await callback.answer()
+        return
+
+    if action == AdminUsersAction.DIRECT_BROADCAST:
+        await state.set_state(AdminUserLookupState.waiting_for_identifier_value)
+        await state.update_data(direct_broadcast=True)
+        await render_screen_message(
+            callback.message,
+            text=render_direct_broadcast_lookup_text(language),
+            reply_markup=build_admin_user_lookup_type_markup(language),
+            edit=True,
         )
         await callback.answer()
         return
@@ -164,6 +180,42 @@ async def handle_broadcast_content(
     )
 
 
+@router.message(AdminDirectBroadcastState.waiting_for_content)
+async def handle_direct_broadcast_content(message: Message, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+
+    data = await state.get_data()
+    try:
+        draft = await user_service.build_broadcast_draft(message.from_user, message)
+    except BroadcastValidationError:
+        language = await user_service.get_user_language(message.from_user)
+        await message.answer(translate(language, "admin_broadcast_invalid"))
+        return
+    try:
+        recipient = await user_service.find_user_by_identifier(
+            message.from_user,
+            identifier_type="bot_id",
+            identifier_value=str(data["recipient_bot_user_id"]),
+        )
+    except UserLookupError:
+        language = await user_service.get_user_language(message.from_user)
+        await state.clear()
+        await message.answer(translate(language, "admin_user_not_found"))
+        return
+
+    await state.update_data(
+        draft_html_text=draft.html_text,
+        draft_photo_file_id=draft.photo_file_id,
+        draft_language=draft.language.value,
+    )
+    await state.set_state(AdminDirectBroadcastState.waiting_for_confirmation)
+    await message.answer(
+        text=render_direct_broadcast_confirmation_text(draft.language, draft, recipient),
+        reply_markup=build_admin_broadcast_confirmation_markup(draft.language),
+    )
+
+
 @router.callback_query(AdminBroadcastCallback.filter())
 async def handle_broadcast_confirmation(
     callback: CallbackQuery,
@@ -178,12 +230,28 @@ async def handle_broadcast_confirmation(
     data = await state.get_data()
     language = await user_service.get_user_language(callback.from_user)
     action = callback_data.action
+    is_direct_broadcast = await state.get_state() == AdminDirectBroadcastState.waiting_for_confirmation.state
 
     if action == AdminBroadcastAction.BACK:
-        await state.set_state(AdminBroadcastState.waiting_for_content)
+        if is_direct_broadcast:
+            try:
+                recipient = await user_service.find_user_by_identifier(
+                    callback.from_user,
+                    identifier_type="bot_id",
+                    identifier_value=str(data["recipient_bot_user_id"]),
+                )
+            except UserLookupError:
+                await state.clear()
+                await callback.answer(translate(language, "admin_user_not_found"), show_alert=True)
+                return
+            await state.set_state(AdminDirectBroadcastState.waiting_for_content)
+            prompt_text = render_direct_broadcast_prompt_text(language, recipient)
+        else:
+            await state.set_state(AdminBroadcastState.waiting_for_content)
+            prompt_text = render_broadcast_prompt_text(language)
         await render_screen_message(
             callback.message,
-            text=render_broadcast_prompt_text(language),
+            text=prompt_text,
             reply_markup=build_admin_broadcast_prompt_markup(language),
             edit=True,
         )
@@ -217,11 +285,26 @@ async def handle_broadcast_confirmation(
         await callback.answer()
         return
 
-    result = await user_service.send_broadcast(bot, draft)
+    if is_direct_broadcast:
+        try:
+            recipient = await user_service.find_user_by_identifier(
+                callback.from_user,
+                identifier_type="bot_id",
+                identifier_value=str(data["recipient_bot_user_id"]),
+            )
+        except UserLookupError:
+            await state.clear()
+            await callback.answer(translate(language, "admin_user_not_found"), show_alert=True)
+            return
+        result = await user_service.send_direct_broadcast(bot, telegram_id=recipient.telegram_id, draft=draft)
+        result_text = render_direct_broadcast_result_text(result, recipient)
+    else:
+        result = await user_service.send_broadcast(bot, draft)
+        result_text = render_broadcast_result_text(result)
     await state.clear()
     await render_screen_message(
         callback.message,
-        text=render_broadcast_result_text(result),
+        text=result_text,
         reply_markup=build_admin_broadcast_prompt_markup(result.language),
         edit=True,
     )
@@ -239,15 +322,20 @@ async def handle_user_lookup_type(
         return
 
     language = await user_service.get_user_language(callback.from_user)
+    data = await state.get_data()
     await state.set_state(AdminUserLookupState.waiting_for_identifier_value)
     await state.update_data(
+        direct_broadcast=bool(data.get("direct_broadcast")),
         identifier_type=callback_data.identifier_type,
         anchor_chat_id=callback.message.chat.id,
         anchor_message_id=callback.message.message_id,
     )
+    prompt_text = (
+        translate(language, "admin_user_lookup_prompt", identifier=translate(language, "admin_user_identifier_bot_id") if callback_data.identifier_type == "bot_id" else translate(language, "admin_user_identifier_tg_id"))
+    )
     await render_screen_message(
         callback.message,
-        text=render_user_lookup_prompt_text(language, callback_data.identifier_type),
+        text=prompt_text,
         reply_markup=build_admin_user_lookup_prompt_markup(language),
         edit=True,
     )
@@ -264,10 +352,11 @@ async def handle_user_lookup_value(
 
     language = await user_service.get_user_language(message.from_user)
 
+    data = await state.get_data()
     try:
         user = await user_service.find_user_by_identifier(
             message.from_user,
-            identifier_type=(await state.get_data())["identifier_type"],
+            identifier_type=data["identifier_type"],
             identifier_value=message.text or "",
         )
     except UserLookupError:
@@ -275,6 +364,12 @@ async def handle_user_lookup_value(
             translate(language, "admin_user_not_found"),
             reply_markup=build_admin_user_lookup_prompt_markup(language),
         )
+        return
+
+    if data.get("direct_broadcast"):
+        await state.set_state(AdminDirectBroadcastState.waiting_for_content)
+        await state.update_data(recipient_bot_user_id=user.bot_user_id)
+        await message.answer(text=render_direct_broadcast_prompt_text(language, user))
         return
 
     await state.clear()

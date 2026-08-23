@@ -180,6 +180,19 @@ class UserService:
             failed_count=failed_count,
         )
 
+    async def send_direct_broadcast(self, bot: Bot, *, telegram_id: int, draft: BroadcastDraftSchema) -> BroadcastResultSchema:
+        try:
+            if draft.photo_file_id is None:
+                await bot.send_message(chat_id=telegram_id, text=draft.html_text)
+            else:
+                await bot.send_photo(chat_id=telegram_id, photo=draft.photo_file_id, caption=draft.html_text)
+        except TelegramAPIError:
+            logger.warning("Direct broadcast failed telegram_id=%s", telegram_id)
+            return BroadcastResultSchema(language=draft.language, total_users=1, sent_count=0, failed_count=1)
+
+        logger.info("Direct broadcast sent telegram_id=%s", telegram_id)
+        return BroadcastResultSchema(language=draft.language, total_users=1, sent_count=1, failed_count=0)
+
     async def export_users_xlsx(self, admin_user: TelegramUser) -> tuple[Language, BufferedInputFile]:
         async with async_session_factory() as session:
             user_repository = UserRepository(session)
@@ -314,6 +327,58 @@ def render_broadcast_result_text(result: BroadcastResultSchema) -> str:
             translate(result.language, "admin_broadcast_result_title"),
             "",
             translate(result.language, "admin_broadcast_total_users", count=result.total_users),
+            translate(result.language, "admin_broadcast_sent_count", count=result.sent_count),
+            translate(result.language, "admin_broadcast_failed_count", count=result.failed_count),
+        )
+    )
+
+
+def render_direct_broadcast_recipient(language: Language, user: AdminUserSummarySchema) -> str:
+    return translate(
+        language,
+        "admin_direct_broadcast_recipient",
+        bot_user_id=user.bot_user_id,
+        telegram_id=user.telegram_id,
+    )
+
+
+def render_direct_broadcast_lookup_text(language: Language) -> str:
+    return translate(language, "admin_direct_broadcast_lookup_title")
+
+
+def render_direct_broadcast_prompt_text(language: Language, user: AdminUserSummarySchema) -> str:
+    return translate(
+        language,
+        "admin_direct_broadcast_prompt",
+        recipient=render_direct_broadcast_recipient(language, user),
+    )
+
+
+def render_direct_broadcast_confirmation_text(language: Language, draft: BroadcastDraftSchema, user: AdminUserSummarySchema) -> str:
+    return "\n".join(
+        (
+            translate(
+                language,
+                "admin_direct_broadcast_confirm_title",
+                recipient=render_direct_broadcast_recipient(language, user),
+            ),
+            "",
+            translate(language, "admin_broadcast_confirm_text_present"),
+            translate(
+                language,
+                "admin_broadcast_confirm_image_present",
+                has_image=translate(language, "yes") if draft.photo_file_id else translate(language, "no"),
+            ),
+        )
+    )
+
+
+def render_direct_broadcast_result_text(result: BroadcastResultSchema, user: AdminUserSummarySchema) -> str:
+    return "\n".join(
+        (
+            translate(result.language, "admin_direct_broadcast_result_title"),
+            "",
+            render_direct_broadcast_recipient(result.language, user),
             translate(result.language, "admin_broadcast_sent_count", count=result.sent_count),
             translate(result.language, "admin_broadcast_failed_count", count=result.failed_count),
         )

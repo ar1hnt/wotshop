@@ -1716,6 +1716,12 @@ def build_admin_users_menu_markup(language: Language) -> InlineKeyboardMarkup:
                     callback_data=AdminUsersCallback(action=AdminUsersAction.BROADCAST).pack(),
                 ),
                 InlineKeyboardButton(
+                    text=translate(language, "admin_button_direct_broadcast"),
+                    callback_data=AdminUsersCallback(action=AdminUsersAction.DIRECT_BROADCAST).pack(),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text=translate(language, "admin_button_export_users"),
                     callback_data=AdminUsersCallback(action=AdminUsersAction.EXPORT).pack(),
                 ),

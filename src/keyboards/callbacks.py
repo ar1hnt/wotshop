@@ -215,6 +215,7 @@ class AdminSalesCallback(CallbackData, prefix="admin_sales"):
 class AdminUsersAction(StrEnum):
     OPEN_MENU = "open_menu"
     BROADCAST = "broadcast"
+    DIRECT_BROADCAST = "direct_broadcast"
     EXPORT = "export"
     EDIT = "edit"
     BACK_TO_MAIN = "back_to_main"
