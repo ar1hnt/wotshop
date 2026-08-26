@@ -569,7 +569,7 @@ class CatalogSyncService:
                     supplier_item_id,
                 )
                 check_payload = error.payload
-            elif _should_delete_local_account_after_check_error(error.payload):
+            elif should_delete_local_account_after_check_error(error.payload):
                 logger.info(
                     "LZT check-account reported an unavailable account; deleting local account "
                     "local_account_id=%s supplier_item_id=%s",
@@ -1262,13 +1262,21 @@ def _has_invalid_credentials_error(payload: dict[str, Any]) -> bool:
     return any("неправильн" in entry.lower() and "логин" in entry.lower() for entry in _iter_error_messages(payload))
 
 
-def _should_delete_local_account_after_check_error(payload: dict[str, Any]) -> bool:
-    return _is_supplier_listing_removed_error(payload) or _has_invalid_credentials_error(payload)
+def should_delete_local_account_after_check_error(payload: dict[str, Any]) -> bool:
+    return (
+        _is_supplier_listing_removed_error(payload)
+        or _has_invalid_credentials_error(payload)
+        or _has_blocked_account_error(payload)
+    )
+
+
+def _has_blocked_account_error(payload: dict[str, Any]) -> bool:
+    return any("аккаунт заблокирован" in entry.lower() for entry in _iter_error_messages(payload))
 
 
 def _get_supplier_listing_removed_reason(payload: dict[str, Any]) -> str | None:
     """Map unavailable-account responses to a customer-safe credentials reason."""
-    if _should_delete_local_account_after_check_error(payload):
+    if should_delete_local_account_after_check_error(payload):
         return "invalid_credentials"
     return None
 

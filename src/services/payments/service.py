@@ -27,6 +27,7 @@ from src.services.sync import (
     LztApiResponseError,
     LztConfigurationError,
     LztSyncError,
+    should_delete_local_account_after_check_error,
     catalog_sync_service,
     render_catalog_refresh_result_text,
 )
@@ -588,6 +589,13 @@ class PaymentService:
                         refresh_result = replace(refresh_result, deletion_reason="invalid_credentials")
                     raise AccountPriceChangedError(refresh_result) from error
             else:
+                if isinstance(error, LztApiResponseError) and should_delete_local_account_after_check_error(error.payload):
+                    refresh_result = await catalog_sync_service.refresh_account(
+                        local_account_id=transaction.catalog_account_id or 0,
+                    )
+                    if refresh_result.deleted:
+                        refresh_result = replace(refresh_result, deletion_reason="invalid_credentials")
+                        raise AccountPriceChangedError(refresh_result) from error
                 raise AccountUnavailableError("LZT Fast Buy failed.") from error
         try:
             managed_item_payload = await client.get_managed_item(supplier_item_id)
